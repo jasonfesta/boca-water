@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Instrument Serif", Georgia, serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Fragment Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  :root {
+    --bg: #030304;
+    --fg: #f6f5f1;
+    --fg-muted: rgba(246, 245, 241, 0.72);
+    --fg-subtle: rgba(246, 245, 241, 0.48);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+    background-color: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  button {
+    cursor: pointer;
+  }
+}
+
+.font-editorial {
+  font-family: var(--font-display);
+}
+
+.font-ui {
+  font-family: var(--font-sans);
+}
+
+/* Liquid / crystal glass large display headlines — zero drop shadows */
+.kp-glass-title {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(235, 242, 248, 0.76) 54%,
+    rgba(215, 228, 240, 0.48) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-stroke: 0.5px rgba(255, 255, 255, 0.28);
+}
+
+/* Coastal-drive kinetic scroll parallax stage — strictly above 3D canvas */
+.kp-scroll-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  pointer-events: none;
+  background: transparent;
+  z-index: 20;
+}
+
+.kp-section {
+  position: absolute;
+  inset: 0;
+  padding: 88px clamp(28px, 6vw, 88px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.kp-section.kp-align-left {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.kp-section.kp-align-right {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.kp-section.kp-align-bottom-left {
+  justify-content: flex-end;
+  align-items: flex-start;
+  text-align: left;
+  padding-bottom: clamp(56px, 9vh, 96px);
+}
+
+.kp-headline-line {
+  display: block;
+  will-change: transform;
+}
+
+@media (max-width: 640px) {
+  .kp-section,
+  .kp-section.kp-align-left,
+  .kp-section.kp-align-right,
+  .kp-section.kp-align-bottom-left {
+    padding: 80px 24px 48px;
+    justify-content: flex-end;
+    align-items: flex-start;
+    text-align: left;
+    gap: 12px;
+  }
+}
