@@ -268,7 +268,11 @@ export function BottleScene({
     };
 
     const handleWheel = (e: WheelEvent) => {
-      if (typeof externalScrollRef.current === 'number' || isNativeScrollable()) {
+      if (
+        externalScrollObjHolder.current ||
+        typeof externalScrollRef.current === 'number' ||
+        isNativeScrollable()
+      ) {
         return;
       }
       e.preventDefault();
@@ -296,7 +300,10 @@ export function BottleScene({
         const dxPx = e.clientX - lastPointerX;
         const dyPx = e.clientY - lastPointerY;
         totalDragDist += Math.hypot(dxPx, dyPx);
-        rig.addDragDelta(dxPx * 0.0085, dyPx * 0.0045);
+        const isDesignMode = viewModeRef.current === 'design';
+        const sx = isDesignMode ? 0.0095 : 0.0085;
+        const sy = isDesignMode ? 0.0095 : 0.0045;
+        rig.addDragDelta(dxPx * sx, dyPx * sy);
         lastPointerX = e.clientX;
         lastPointerY = e.clientY;
       }
@@ -849,7 +856,7 @@ export function BottleScene({
       ref={containerRef}
       className={`relative w-full h-full select-none ${
         interactive ? 'cursor-grab active:cursor-grabbing' : ''
-      } ${className}`}
+      } ${viewMode === 'design' ? 'touch-none' : ''} ${className}`}
       aria-label="Interactive 3D Boca Sparkling Water 12 fl oz crystal-clear PET can"
     />
   );

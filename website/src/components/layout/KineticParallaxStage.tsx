@@ -33,7 +33,6 @@ export const KineticParallaxStage = memo(function KineticParallaxStage({
   goldWordmark = true,
 }: KineticParallaxStageProps) {
   const stageRef = useRef<HTMLDivElement>(null);
-  void goldWordmark;
   const titleFinishClass = '';
 
   useEffect(() => {
@@ -226,8 +225,8 @@ export const KineticParallaxStage = memo(function KineticParallaxStage({
       style={{
         opacity: directReturn ? 0 : 1,
         transition: directReturn
-          ? 'opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1)'
-          : 'opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1)',
+          ? 'opacity 0.56s cubic-bezier(0.22, 1, 0.36, 1)'
+          : 'opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1)',
       }}
       className="kp-scroll-canvas"
     >
@@ -254,13 +253,12 @@ export const KineticParallaxStage = memo(function KineticParallaxStage({
           of paper, flavor, and noise so nothing stands between you and a quiet
           mind.
         </p>
-        <div data-k-role="button" className="mt-2 -ml-[8px]">
+        <div data-k-role="button" className="mt-3">
           <WaterButton
             label="Continue"
-            matchLabel="Continue"
-            shape="puddle"
-            scale={1}
-            onClick={() => onJumpToProgress(1 / 3, 950)}
+            gold={goldWordmark}
+            size="hero"
+            onClick={() => onJumpToProgress(1 / 3, 1350)}
             className="pointer-events-auto"
           />
         </div>
@@ -287,22 +285,20 @@ export const KineticParallaxStage = memo(function KineticParallaxStage({
         </p>
         <div
           data-k-role="button"
-          className="mt-2 flex items-center gap-0 sm:gap-1 -ml-[8px] sm:ml-0 sm:-mr-[8px]"
+          className="mt-3 flex items-center gap-7 sm:gap-9"
         >
           <WaterButton
             label="Back"
-            matchLabel="Continue"
-            shape="puddle"
-            scale={1}
-            onClick={() => onJumpToProgress(0, 950)}
+            gold={goldWordmark}
+            size="hero"
+            onClick={() => onJumpToProgress(0, 1350)}
             className="pointer-events-auto"
           />
           <WaterButton
             label="Continue"
-            matchLabel="Continue"
-            shape="puddle"
-            scale={1}
-            onClick={() => onJumpToProgress(2 / 3, 950)}
+            gold={goldWordmark}
+            size="hero"
+            onClick={() => onJumpToProgress(2 / 3, 1350)}
             className="pointer-events-auto"
           />
         </div>
@@ -329,22 +325,20 @@ export const KineticParallaxStage = memo(function KineticParallaxStage({
         </p>
         <div
           data-k-role="button"
-          className="mt-2 flex items-center justify-center gap-0 sm:gap-1"
+          className="mt-3 flex items-center justify-center gap-7 sm:gap-9"
         >
           <WaterButton
             label="Back"
-            matchLabel="Continue"
-            shape="puddle"
-            scale={1}
-            onClick={() => onJumpToProgress(1 / 3, 950)}
+            gold={goldWordmark}
+            size="hero"
+            onClick={() => onJumpToProgress(1 / 3, 1350)}
             className="pointer-events-auto"
           />
           <WaterButton
             label="Continue"
-            matchLabel="Continue"
-            shape="puddle"
-            scale={1}
-            onClick={() => onJumpToProgress(1, 950)}
+            gold={goldWordmark}
+            size="hero"
+            onClick={() => onJumpToProgress(1, 1350)}
             className="pointer-events-auto"
           />
         </div>
@@ -369,12 +363,11 @@ export const KineticParallaxStage = memo(function KineticParallaxStage({
           Pure sparkling stillness, chilled and ready whenever the day asks for
           clarity.
         </p>
-        <div data-k-role="button" className="mt-2 -ml-[8px] sm:ml-0 sm:-mr-[8px]">
+        <div data-k-role="button" className="mt-3">
           <WaterButton
             label="Back"
-            matchLabel="Continue"
-            shape="puddle"
-            scale={1}
+            gold={goldWordmark}
+            size="hero"
             onClick={onDirectReturnToTop}
             className="pointer-events-auto"
           />

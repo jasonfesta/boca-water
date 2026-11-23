@@ -93,7 +93,7 @@ export const PACK_LIST: PackProduct[] = [
 export const SHOP_CATALOG_LIST: readonly ShopCatalogItem[] = [
   {
     id: '1-pack',
-    title: 'Holiday Single',
+    title: 'Single',
     priceCents: PACKS['1-pack'].priceCents,
     category: 'water',
     paymentLinkEnvKey: 'VITE_STRIPE_PAYMENT_LINK_1PACK',
@@ -111,27 +111,6 @@ export const SHOP_CATALOG_LIST: readonly ShopCatalogItem[] = [
     priceCents: PACKS['24-pack'].priceCents,
     category: 'water',
     paymentLinkEnvKey: 'VITE_STRIPE_PAYMENT_LINK_24PACK',
-  },
-  {
-    id: 'shirt',
-    title: 'Shirt',
-    priceCents: 5000,
-    category: 'merch',
-    paymentLinkEnvKey: 'VITE_STRIPE_PAYMENT_LINK_SHIRT',
-  },
-  {
-    id: 'hat',
-    title: 'Hat',
-    priceCents: 5000,
-    category: 'merch',
-    paymentLinkEnvKey: 'VITE_STRIPE_PAYMENT_LINK_HAT',
-  },
-  {
-    id: 'hoodie',
-    title: 'Hoodie',
-    priceCents: 10000,
-    category: 'merch',
-    paymentLinkEnvKey: 'VITE_STRIPE_PAYMENT_LINK_HOODIE',
   },
 ] as const;
 

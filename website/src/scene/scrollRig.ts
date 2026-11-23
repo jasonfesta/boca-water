@@ -43,12 +43,12 @@ export const BOTTLE_SCROLL_KEYFRAMES: readonly ScrollKeyframe[] = [
   {
     at: 2 / 3,
     section: 'bubbles',
-    // 100% horizontally perfect (exact 90 deg level, zero tilt) lifted into top-center
-    // shrunk 10% (0.90) for generous airy clearance above Beat 3's pushed-down text & puddle buttons
-    bottlePos: [0.0, 0.72, 0.0],
+    // 100% horizontally perfect (exact 90 deg level, zero tilt), lowered ~73px from 0.72 -> 0.48
+    // so the bottle sits vertically centered in the open Beat 3 stage above "Clarity you taste."
+    bottlePos: [0.0, 0.48, 0.0],
     bottleRot: [0.0, 0.0, -Math.PI / 2],
     bottleScale: 0.90,
-    cameraPos: [0.0, 0.72, 4.30],
+    cameraPos: [0.0, 0.48, 4.30],
     cameraTarget: [0.0, 0.24, 0.0],
     cameraFov: 34,
   },
@@ -276,21 +276,32 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
   let lastDragTime = 0;
   let prevSmoothed = 0;
 
+  // Unrestricted 360-degree quaternionic arcball orbit for Design mode (zero gimbal lock, zero snap-back)
+  const WORLD_UP = new THREE.Vector3(0, 1, 0);
+  const WORLD_RIGHT = new THREE.Vector3(1, 0, 0);
+  const IDENTITY_QUAT = new THREE.Quaternion();
+  const designOrbitQuat = new THREE.Quaternion();
+  const designStepQ1 = new THREE.Quaternion();
+  const designStepQ2 = new THREE.Quaternion();
+  let designOrbitVelX = 0;
+  let designOrbitVelY = 0;
+  let designOrbitActive = false;
+
   // Beat 3 hypnotic slow axial spin accumulator
   let beat3AxialSpin = 0;
 
-  // Smooth view-mode transition choreography ('home' | 'shop' | 'science' | 'story')
+  // Smooth view-mode transition choreography ('home' | 'shop' | 'science' | 'design' | 'story')
   let lastViewMode: SceneViewMode = 'home';
   let shopEntryTimer = 1.0;
   let exitLiftY = 0;
   let exitShiftX = 0;
   let storySmoothed = 0;
 
-  // Calm, cinema-smooth direct glide state (Beat 4 -> Beat 1 `directReturn`, zero wild spin/orbit)
+  // Calm, drawn-out direct glide state (Beat 4 -> Beat 1 `directReturn`, zero wild spin/orbit)
   let wasDirectReturn = false;
   let orbitActive = false;
   let orbitElapsed = 0;
-  const ORBIT_DURATION = 1.15;
+  const ORBIT_DURATION = 1.55;
   const orbitStartPos = new THREE.Vector3();
   const orbitStartQuat = new THREE.Quaternion();
   const orbitEndQuat = new THREE.Quaternion();
@@ -369,6 +380,8 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
       lastDragTime = performance.now();
       dragVelYaw = 0;
       dragVelPitch = 0;
+      designOrbitVelX = 0;
+      designOrbitVelY = 0;
     }
   };
 
@@ -376,6 +389,19 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
     const now = performance.now();
     const dtSec = Math.max(0.004, Math.min((now - lastDragTime) / 1000, 0.08));
     lastDragTime = now;
+
+    if (designOrbitActive) {
+      // Full 360-degree world-space orbit around the entire bottle (front, back, white lid, base punt)
+      designStepQ1.setFromAxisAngle(WORLD_UP, dxRad);
+      designStepQ2.setFromAxisAngle(WORLD_RIGHT, dyRad);
+      designOrbitQuat.premultiply(designStepQ1).premultiply(designStepQ2).normalize();
+
+      const instVx = THREE.MathUtils.clamp(dxRad / dtSec, -12, 12);
+      const instVy = THREE.MathUtils.clamp(dyRad / dtSec, -12, 12);
+      designOrbitVelX = THREE.MathUtils.lerp(designOrbitVelX, instVx, 0.35);
+      designOrbitVelY = THREE.MathUtils.lerp(designOrbitVelY, instVy, 0.35);
+      return;
+    }
 
     dragYaw += dxRad;
     dragPitch = THREE.MathUtils.clamp(dragPitch + dyRad, -0.65, 0.65);
@@ -407,12 +433,17 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
       viewMode === 'about' ||
       viewMode === 'design';
 
-    // Detect view switches: keep live 3D bottle continuously damped with ZERO teleports or snaps!
+    const isDesignView = viewMode === 'design';
+    const isScienceOnlyView = viewMode === 'science' || viewMode === 'about';
+
+    // Detect view switches: drawn-out soft 3D damping with ZERO teleports or snaps!
     if (viewMode !== lastViewMode) {
-      viewTransitionTimer = 1.15;
+      viewTransitionTimer = 1.85;
       orbitActive = false;
       if (viewMode === 'shop') {
         shopEntryTimer = 0;
+        designOrbitVelX = 0;
+        designOrbitVelY = 0;
       } else if (viewMode === 'home') {
         const targetP = THREE.MathUtils.clamp(state.rawProgress, 0, 1);
         beat3AxialSpin = 0;
@@ -420,6 +451,8 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
         dragPitch = 0;
         dragVelYaw = 0;
         dragVelPitch = 0;
+        designOrbitVelX = 0;
+        designOrbitVelY = 0;
         state.progress = targetP;
         prevSmoothed = targetP;
       } else if (isStoryView) {
@@ -427,12 +460,17 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
         dragPitch = 0;
         dragVelYaw = 0;
         dragVelPitch = 0;
-        const targetStoryInit =
-          viewMode === 'design' ? 1 : THREE.MathUtils.clamp(storyScrollProgress, 0, 1);
+        designOrbitVelX = 0;
+        designOrbitVelY = 0;
+        if (isDesignView) {
+          designOrbitQuat.copy(IDENTITY_QUAT);
+        }
+        const targetStoryInit = isScienceOnlyView
+          ? 0
+          : THREE.MathUtils.clamp(storyScrollProgress, 0, 1);
         storySmoothed = targetStoryInit;
-        // Clamp deep Shop exitLiftY (-9.5) so Shop -> Design rises briskly into center without lingering low
-        if (exitLiftY < -3.2) {
-          exitLiftY = -3.2;
+        if (exitLiftY < -3.6) {
+          exitLiftY = -3.6;
         }
       }
       lastViewMode = viewMode;
@@ -541,17 +579,21 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
       return state;
     }
 
-    // Smooth, responsive bidirectional damping on Science (0.0) <-> Design (1.0) 2-swipe flow
-    const rawStoryTarget =
-      viewMode === 'design' ? 1 : THREE.MathUtils.clamp(storyScrollProgress, 0, 1);
+    // Soft, drawn-out damping on Science (0.0) & Design State 0 (1.0) <-> Design State 1 (0.0)
+    const rawStoryTarget = isScienceOnlyView
+      ? 0
+      : THREE.MathUtils.clamp(storyScrollProgress, 0, 1);
     storySmoothed = THREE.MathUtils.lerp(
       storySmoothed,
       rawStoryTarget,
-      1 - Math.exp(-clampedDt * 7.5)
+      1 - Math.exp(-clampedDt * 3.6)
     );
 
+    // Enable unrestricted 360-deg orbit while inspecting the bottle in Design State 0
+    designOrbitActive = isDesignView && storySmoothed > 0.35;
+
     // Silky, velvety scroll chase
-    const scrollAlpha = 1 - Math.exp(-clampedDt * 6.2);
+    const scrollAlpha = 1 - Math.exp(-clampedDt * 4.6);
     state.progress = THREE.MathUtils.lerp(
       state.progress,
       state.rawProgress,
@@ -584,7 +626,25 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
       1.2
     );
 
-    // Weighted glass-in-oil drag physics: silky inertial coast on release, zero jerk-back!
+    // Weighted glass-in-oil drag physics:
+    // - In Design State 0: silky inertial 360-deg coast with ZERO auto-snap-back so users can freely inspect every side
+    // - Outside Design State 0: soft return to upright orientation
+    if (designOrbitActive) {
+      if (!isUserDragging) {
+        designOrbitVelX *= Math.exp(-clampedDt * 2.4);
+        designOrbitVelY *= Math.exp(-clampedDt * 2.4);
+        if (Math.abs(designOrbitVelX) > 0.0004 || Math.abs(designOrbitVelY) > 0.0004) {
+          designStepQ1.setFromAxisAngle(WORLD_UP, designOrbitVelX * clampedDt);
+          designStepQ2.setFromAxisAngle(WORLD_RIGHT, designOrbitVelY * clampedDt);
+          designOrbitQuat.premultiply(designStepQ1).premultiply(designStepQ2).normalize();
+        }
+      }
+    } else {
+      designOrbitVelX = 0;
+      designOrbitVelY = 0;
+      designOrbitQuat.slerp(IDENTITY_QUAT, 1 - Math.exp(-clampedDt * 2.6));
+    }
+
     if (!isUserDragging) {
       dragVelYaw *= Math.exp(-clampedDt * 2.6);
       dragVelPitch *= Math.exp(-clampedDt * 3.5);
@@ -595,15 +655,11 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
         0.65
       );
 
-      // Keep dragYaw wrapped cleanly in [-PI, PI] and apply only ultra-soft settle
-      // (zero abrupt yank back to 0; gently eases back if user scrolls to a new beat)
       dragYaw = Math.atan2(Math.sin(dragYaw), Math.cos(dragYaw));
       const yawSettleRate = isStoryView
         ? 0.08 + Math.abs(storyScrollProgress - storySmoothed) * 0.9
         : 0.20 + Math.abs(state.velocity) * 1.4;
       dragYaw *= Math.exp(-clampedDt * yawSettleRate);
-
-      // Pitch glides softly back toward level via critically damped decay
       dragPitch *= Math.exp(-clampedDt * 1.15);
     }
 
@@ -658,8 +714,10 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
       //     VERTICAL upright (z = 0) with balanced top & bottom breathing room.
       const isHorizontalDesign = !isMobileViewport;
       const zBoost = isPortraitMobile ? 0.85 : isNarrow ? 0.55 : 0.0;
-      const bottleY = isHorizontalDesign ? -0.10 : -0.08;
-      const bottleScale = isHorizontalDesign ? 1.24 : 0.71;
+      const bottleY = isHorizontalDesign ? -0.06 : -0.06;
+      // 1.02 scale on Desktop keeps the bottle monumental horizontally AND 100% framed
+      // inside the viewport when rotated vertically end-over-end 360 degrees!
+      const bottleScale = isHorizontalDesign ? 1.02 : 0.70;
       const designRollZ = isHorizontalDesign ? -Math.PI / 2 : 0.0;
 
       pose.bottlePos.set(0.0, bottleY, 0.0);
@@ -732,10 +790,10 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
       viewMode === 'shop'
         ? -9.5
         : isStoryView
-          ? (1 - storyEnter) * -4.6
+          ? (1 - storyEnter) * -5.4
           : 0;
     const targetExitX = 0;
-    const exitSpeed = viewMode === 'shop' ? 5.6 : isStoryView ? 8.2 : 4.2;
+    const exitSpeed = viewMode === 'shop' ? 2.6 : isStoryView ? 3.2 : 2.4;
     exitLiftY = THREE.MathUtils.lerp(
       exitLiftY,
       targetExitY,
@@ -819,13 +877,25 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
       pose.bottlePos.y + floatY + exitLiftY,
       pose.bottlePos.z
     );
-    desiredEuler.set(
-      pose.bottleRot.x + packPitch + state.pointerY * 0.085 * designLevelLock + dragPitch,
-      pose.bottleRot.y + packYaw + idleYaw + beat3AxialSpin + state.pointerX * 0.20 + dragYaw,
-      pose.bottleRot.z + (isDesktopHorizontalDesign ? 0 : idleRoll) - state.pointerX * 0.04 * designLevelLock,
-      'ZXY'
-    );
-    desiredQuat.setFromEuler(desiredEuler);
+    if (isDesignView) {
+      desiredEuler.set(
+        pose.bottleRot.x,
+        pose.bottleRot.y + idleYaw * 0.35,
+        pose.bottleRot.z,
+        'ZXY'
+      );
+      desiredQuat.setFromEuler(desiredEuler);
+      // Pre-multiply unrestricted 360-degree world-space orbit so dragging turns smoothly in every direction
+      desiredQuat.premultiply(designOrbitQuat).normalize();
+    } else {
+      desiredEuler.set(
+        pose.bottleRot.x + packPitch + state.pointerY * 0.085 * designLevelLock + dragPitch,
+        pose.bottleRot.y + packYaw + idleYaw + beat3AxialSpin + state.pointerX * 0.20 + dragYaw,
+        pose.bottleRot.z + (isDesktopHorizontalDesign ? 0 : idleRoll) - state.pointerX * 0.04 * designLevelLock,
+        'ZXY'
+      );
+      desiredQuat.setFromEuler(desiredEuler);
+    }
     const desiredScale = pose.bottleScale * packScale;
 
     if (!hasSmoothedPose) {
@@ -834,11 +904,22 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
       smoothedScale = desiredScale;
       hasSmoothedPose = true;
     } else {
-      const poseRate = viewTransitionTimer > 0 ? 5.2 : isStoryView ? 6.8 : 11.5;
-      const poseAlpha = 1 - Math.exp(-clampedDt * poseRate);
-      smoothedPos.lerp(desiredPos, poseAlpha);
-      smoothedQuat.slerp(desiredQuat, poseAlpha);
-      smoothedScale = THREE.MathUtils.lerp(smoothedScale, desiredScale, poseAlpha);
+      const posRate = viewTransitionTimer > 0 ? 2.75 : isStoryView ? 3.8 : 7.5;
+      const rotRate =
+        designOrbitActive && isUserDragging
+          ? 20.0
+          : designOrbitActive
+            ? 11.0
+            : viewTransitionTimer > 0
+              ? 2.75
+              : isStoryView
+                ? 4.2
+                : 8.5;
+      const posAlpha = 1 - Math.exp(-clampedDt * posRate);
+      const rotAlpha = 1 - Math.exp(-clampedDt * rotRate);
+      smoothedPos.lerp(desiredPos, posAlpha);
+      smoothedQuat.slerp(desiredQuat, rotAlpha);
+      smoothedScale = THREE.MathUtils.lerp(smoothedScale, desiredScale, posAlpha);
     }
 
     stagePivot.rotation.order = 'ZXY';
@@ -850,7 +931,7 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
     const desiredCamY = pose.cameraPos.y + packExtraY - state.pointerY * 0.045;
     const desiredCamZ = pose.cameraPos.z + packExtraZ;
 
-    const camLerpRate = viewTransitionTimer > 0 ? 5.2 : isStoryView ? 4.8 : 7.0;
+    const camLerpRate = viewTransitionTimer > 0 ? 2.75 : isStoryView ? 3.4 : 5.2;
     const camAlpha = 1 - Math.exp(-clampedDt * camLerpRate);
     camera.position.lerp(
       pose.cameraPos.set(desiredCamX, desiredCamY, desiredCamZ),

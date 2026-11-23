@@ -1,14 +1,22 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { ScienceHotspotId } from '@/scene/types';
 
-const LUXURY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
-const FLOW_STOPS = [0, 1] as const;
+const SOFT_ENTER_EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
+const SOFT_EXIT_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
-const SCIENCE_PARAGRAPHS = [
-  'BOCA means mouth—where volcanic spring meets open air. Filtered slowly through deep basalt stone, naturally rich in silky silica.',
-  'We added 150 mg of Suntheanine® L-Theanine below the threshold of taste, for calm, unhurried mental clarity without caffeine or bitterness. No paper sleeve, no flavoring, nothing opaque to hide behind—just crystal-clear sparkling water, sealed cold so you can live in the clear.',
-] as const;
+const SCIENCE_TITLE_WORDS = ['Made', 'in', 'Boca', 'Raton.'] as const;
+
+const SCIENCE_ESSAY_WORDS =
+  'BOCA means mouth—where volcanic spring meets open air. Filtered slowly through deep basalt stone for silky natural silica, then infused below the threshold of taste with 150 mg of Suntheanine® L-Theanine for calm, unhurried clarity without caffeine or bitterness.'.split(
+    ' ',
+  );
+
+const DESIGN_ESSAY_WORDS =
+  'Every unnecessary layer was stripped away. A 12 fl oz crystal-clear vessel sealed beneath an architectural matte-white lid—no paper sleeve, no adhesive, no tint. Only pure refraction, rising carbonation, and light passing straight through.'.split(
+    ' ',
+  );
 
 export type HotspotPositionsMap = Record<
   ScienceHotspotId,
@@ -16,6 +24,7 @@ export type HotspotPositionsMap = Record<
 >;
 
 export interface AboutViewProps {
+  mode: 'science' | 'design';
   targetStop?: 0 | 1;
   onStopChange?: (stop: 0 | 1) => void;
   onScrollProgress?: (progress: number) => void;
@@ -31,328 +40,390 @@ declare global {
   }
 }
 
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v));
+}
+
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = clamp01((x - edge0) / (edge1 - edge0));
+  return t * t * (3 - 2 * t);
+}
+
+function easeInOutQuint(t: number): number {
+  return t < 0.5 ? 16 * t * t * t * t * t : 1 - Math.pow(-2 * t + 2, 5) / 2;
+}
+
+/**
+ * Unified 2-Section 60fps Kinetic Scroll View shared identically by Science & Design:
+ * - Science:
+ *   - State 0 (p = 0): "Made in Boca Raton." writing out word-by-word on lock
+ *   - State 1 (p = 1): Large editorial Science statement writing out word-by-word on lock
+ * - Design:
+ *   - State 0 (p = 0): Full unrestricted 360-degree interactive 3D bottle inspection
+ *   - State 1 (p = 1): Bottle softly glides away; large editorial Design statement writes out word-by-word on lock
+ *
+ * Both states support continuous 60fps rAF kinetic scroll up/down (wheel, touch, keys, chevron click)
+ * and release their entrance animation cleanly whenever hitting their locking state.
+ */
 export function AboutView({
-  targetStop = 0,
-  onStopChange,
+  mode,
   onScrollProgress,
-  activeHotspot: _activeHotspot = null,
-  onSelectHotspot,
-  hotspotPositionsRef: _hotspotPositionsRef,
-  goldWordmark = true,
 }: AboutViewProps) {
-  void _activeHotspot;
-  void _hotspotPositionsRef;
-  void goldWordmark;
-  const narrativeRef = useRef<HTMLDivElement>(null);
-
-  const onStopChangeRef = useRef(onStopChange);
+  const isDesign = mode === 'design';
+  const stageRef = useRef<HTMLDivElement>(null);
+  const section0Ref = useRef<HTMLDivElement>(null);
+  const section1Ref = useRef<HTMLDivElement>(null);
   const onScrollProgressRef = useRef(onScrollProgress);
-  const onSelectHotspotRef = useRef(onSelectHotspot);
-  const externalJumpRef = useRef<((stop: 0 | 1) => void) | null>(null);
-  const initialStopRef = useRef<0 | 1>(targetStop);
-
-  onStopChangeRef.current = onStopChange;
   onScrollProgressRef.current = onScrollProgress;
-  onSelectHotspotRef.current = onSelectHotspot;
 
-  const { wordParagraphs, signatureDelay } = useMemo(() => {
-    let globalIdx = 0;
-    const paragraphs = SCIENCE_PARAGRAPHS.map((paragraph) =>
-      paragraph.split(' ').map((word) => ({
-        word,
-        idx: globalIdx++,
-      })),
-    );
-    // Sequence handwritten signature cleanly AFTER the final paragraph finishes revealing
-    return {
-      wordParagraphs: paragraphs,
-      signatureDelay: 0.14 + globalIdx * 0.032 + 0.52,
+  // Release keys incremented each time the user locks into State 0 or State 1
+  const [state0Key, setState0Key] = useState(1);
+  const [state1Key, setState1Key] = useState(0);
+
+  const targetPRef = useRef(0);
+  const currentPRef = useRef(0);
+  const settleStopRef = useRef<0 | 1 | null>(0);
+  const lastInputTimeRef = useRef(0);
+  const lastScrollDirRef = useRef<1 | -1>(1);
+  const lastLockedRef = useRef<0 | 1 | null>(0);
+  const glideRef = useRef<{
+    from: number;
+    to: number;
+    startTime: number;
+    durationMs: number;
+  } | null>(null);
+
+  const glideToStop = useCallback((stop: 0 | 1, durationMs = 1150) => {
+    const reduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    settleStopRef.current = stop;
+    lastInputTimeRef.current = 0;
+    if (reduced) {
+      glideRef.current = null;
+      targetPRef.current = stop;
+      currentPRef.current = stop;
+      return;
+    }
+    glideRef.current = {
+      from: currentPRef.current,
+      to: stop,
+      startTime: performance.now(),
+      durationMs,
     };
   }, []);
 
-  // When user clicks Science (0) or Design (1) in Navbar while already in this flow, glide smoothly!
   useEffect(() => {
-    externalJumpRef.current?.(targetStop);
-  }, [targetStop]);
+    // Reset cleanly to State 0 on mount/mode change
+    targetPRef.current = 0;
+    currentPRef.current = 0;
+    settleStopRef.current = 0;
+    lastLockedRef.current = 0;
+    glideRef.current = null;
+    setState0Key((k) => k + 1);
+    onScrollProgressRef.current?.(isDesign ? 1 : 0);
 
-  useEffect(() => {
     const reducedMotion = window.matchMedia(
       '(prefers-reduced-motion: reduce)',
     ).matches;
 
-    let scrollTarget: number = initialStopRef.current;
-    let scrollCurrent: number = initialStopRef.current;
-    let settleTarget: number | null = initialStopRef.current;
-    let programmaticTarget: 0 | 1 | null = null;
-    let lastReportedStop: 0 | 1 = initialStopRef.current;
-    let lastWheelTime = 0;
-    let lastPublished = -1;
+    let cachedVh = Math.max(1, window.innerHeight);
     let touchStartY = 0;
+    let touchStartX = 0;
+    let touchMode: 'undecided' | 'scroll' | 'ignore' = 'undecided';
+    let rafId = 0;
+    let prevNow = performance.now();
 
-    let targetMouseX = 0;
-    let targetMouseY = 0;
-    let curMouseX = 0;
-    let curMouseY = 0;
-
-    const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
-    const smoothstep = (e0: number, e1: number, x: number) => {
-      const t = clamp01((x - e0) / (e1 - e0));
-      return t * t * (3 - 2 * t);
-    };
-
-    const reportStop = (stop: 0 | 1) => {
-      if (stop === lastReportedStop) return;
-      lastReportedStop = stop;
-      onStopChangeRef.current?.(stop);
-    };
-
-    const jumpToStop = (stop: 0 | 1) => {
-      programmaticTarget = stop;
-      scrollTarget = stop;
-      settleTarget = stop;
-      lastWheelTime = 0;
-      reportStop(stop);
-    };
-
-    externalJumpRef.current = jumpToStop;
+    const ro = new ResizeObserver(() => {
+      cachedVh = Math.max(1, stageRef.current?.clientHeight ?? window.innerHeight);
+    });
+    if (stageRef.current) ro.observe(stageRef.current);
 
     window.__setBocaStoryScroll = (progress: number) => {
       const clamped = clamp01(progress);
-      programmaticTarget = null;
-      scrollTarget = clamped;
-      scrollCurrent = clamped;
-      settleTarget = clamped;
-      lastWheelTime = 0;
-      lastPublished = clamped;
+      glideRef.current = null;
+      targetPRef.current = clamped;
+      currentPRef.current = clamped;
       const stop: 0 | 1 = clamped >= 0.5 ? 1 : 0;
-      reportStop(stop);
-      onScrollProgressRef.current?.(clamped);
+      settleStopRef.current = stop;
+      lastInputTimeRef.current = 0;
+      onScrollProgressRef.current?.(isDesign ? 1 - clamped : 0);
+      if (stop === 1 && lastLockedRef.current !== 1) {
+        lastLockedRef.current = 1;
+        setState1Key((k) => k + 1);
+      } else if (stop === 0 && lastLockedRef.current !== 0) {
+        lastLockedRef.current = 0;
+        setState0Key((k) => k + 1);
+      }
     };
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      programmaticTarget = null;
+      glideRef.current = null;
       const step = e.deltaMode === 1 ? e.deltaY * 18 : e.deltaY;
-      scrollTarget = clamp01(scrollTarget + step * 0.00055);
-      lastWheelTime = performance.now();
-      settleTarget = null;
+      if (Math.abs(step) < 0.1) return;
+      lastScrollDirRef.current = step >= 0 ? 1 : -1;
+      targetPRef.current = clamp01(targetPRef.current + step * 0.00125);
+      lastInputTimeRef.current = performance.now();
+      settleStopRef.current = null;
     };
 
     const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length > 0) {
-        touchStartY = e.touches[0].clientY;
+      if (e.touches.length === 0) return;
+      touchStartY = e.touches[0].clientY;
+      touchStartX = e.touches[0].clientX;
+      // In Design State 0, single-finger drag on the canvas orbits the 3D bottle 360 degrees;
+      // in Design State 1 or anywhere in Science, vertical touch swipe drives kinetic scroll.
+      if (isDesign && currentPRef.current < 0.35 && e.touches.length === 1) {
+        touchMode = 'ignore';
+      } else {
+        touchMode = 'undecided';
       }
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 0) return;
-      programmaticTarget = null;
+      if (touchMode === 'ignore' || e.touches.length === 0) return;
       const y = e.touches[0].clientY;
-      const deltaY = touchStartY - y;
+      const x = e.touches[0].clientX;
+      const dy = touchStartY - y;
+      const dx = touchStartX - x;
+      if (touchMode === 'undecided') {
+        if (Math.hypot(dx, dy) < 6) return;
+        touchMode = Math.abs(dy) >= Math.abs(dx) ? 'scroll' : 'ignore';
+      }
+      if (touchMode !== 'scroll') return;
       touchStartY = y;
-      scrollTarget = clamp01(scrollTarget + deltaY * 0.0013);
-      lastWheelTime = performance.now();
-      settleTarget = null;
+      glideRef.current = null;
+      lastScrollDirRef.current = dy >= 0 ? 1 : -1;
+      targetPRef.current = clamp01(targetPRef.current + dy * 0.0022);
+      lastInputTimeRef.current = performance.now();
+      settleStopRef.current = null;
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ' || e.key === 'End') {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+      if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
         e.preventDefault();
-        jumpToStop(1);
+        glideToStop(1);
       } else if (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'Home') {
         e.preventDefault();
-        jumpToStop(0);
+        glideToStop(0);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        glideToStop(1);
       }
     };
 
-    const onPointerMove = (e: PointerEvent) => {
-      targetMouseX = (e.clientX / Math.max(1, window.innerWidth)) * 2 - 1;
-      targetMouseY = (e.clientY / Math.max(1, window.innerHeight)) * 2 - 1;
-    };
+    const tick = (now: number) => {
+      rafId = requestAnimationFrame(tick);
+      if (document.hidden) return;
 
-    const onPointerLeave = () => {
-      targetMouseX = 0;
-      targetMouseY = 0;
+      const dt = Math.min(0.05, Math.max(0.001, (now - prevNow) / 1000));
+      prevNow = now;
+
+      const activeGlide = glideRef.current;
+      if (activeGlide) {
+        const u = clamp01((now - activeGlide.startTime) / activeGlide.durationMs);
+        const eased = easeInOutQuint(u);
+        const val = activeGlide.from + (activeGlide.to - activeGlide.from) * eased;
+        targetPRef.current = val;
+        currentPRef.current = val;
+        settleStopRef.current = activeGlide.to >= 0.5 ? 1 : 0;
+        if (u >= 1) {
+          targetPRef.current = activeGlide.to;
+          currentPRef.current = activeGlide.to;
+          glideRef.current = null;
+        }
+      } else {
+        if (lastInputTimeRef.current > 0 && now - lastInputTimeRef.current > 145) {
+          if (settleStopRef.current === null) {
+            // Directional bias so even an effortless short scroll locks into the intended state
+            const threshold = lastScrollDirRef.current > 0 ? 0.28 : 0.72;
+            settleStopRef.current = targetPRef.current >= threshold ? 1 : 0;
+          }
+          const settle = settleStopRef.current;
+          if (Math.abs(targetPRef.current - settle) > 1e-4) {
+            targetPRef.current +=
+              (settle - targetPRef.current) * (1 - Math.exp(-4.6 * dt));
+          } else {
+            targetPRef.current = settle;
+          }
+        }
+
+        currentPRef.current +=
+          (targetPRef.current - currentPRef.current) * (1 - Math.exp(-4.8 * dt));
+      }
+
+      const p = clamp01(currentPRef.current);
+
+      // Sync 3D BottleScene smoothly:
+      // - Science: always 0 (bottle softly tucked below)
+      // - Design: 1 at State 0 (360-deg bottle), smoothly descending to 0 as user scrolls to State 1
+      onScrollProgressRef.current?.(isDesign ? 1 - p : 0);
+
+      // Release lock-state word-by-word animations cleanly on entering either stop (up OR down)
+      if (p > 0.26 && p < 0.74 && lastLockedRef.current !== null) {
+        lastLockedRef.current = null;
+      } else if (p <= 0.14 && settleStopRef.current === 0 && lastLockedRef.current !== 0) {
+        lastLockedRef.current = 0;
+        setState0Key((k) => k + 1);
+      } else if (p >= 0.86 && settleStopRef.current === 1 && lastLockedRef.current !== 1) {
+        lastLockedRef.current = 1;
+        setState1Key((k) => k + 1);
+      }
+
+      const vh = cachedVh;
+      const s0 = section0Ref.current;
+      const s1 = section1Ref.current;
+
+      if (s0) {
+        const delta0 = -p; // 0 -> -1
+        const alpha0 = Math.pow(smoothstep(0.68, 0.05, Math.abs(delta0)), 1.45);
+        const y0 = reducedMotion ? 0 : Math.round(delta0 * vh * 0.62);
+        s0.style.opacity = alpha0.toFixed(3);
+        s0.style.visibility = alpha0 > 0.01 ? 'visible' : 'hidden';
+        s0.style.transform = `translate3d(0px, ${y0}px, 0)`;
+      }
+
+      if (s1) {
+        const delta1 = 1 - p; // +1 -> 0
+        const alpha1 = Math.pow(smoothstep(0.68, 0.05, Math.abs(delta1)), 1.45);
+        const y1 = reducedMotion ? 0 : Math.round(delta1 * vh * 0.62);
+        s1.style.opacity = alpha1.toFixed(3);
+        s1.style.visibility = alpha1 > 0.01 ? 'visible' : 'hidden';
+        s1.style.transform = `translate3d(0px, ${y1}px, 0)`;
+      }
     };
 
     window.addEventListener('wheel', onWheel, { passive: false });
     window.addEventListener('touchstart', onTouchStart, { passive: true });
     window.addEventListener('touchmove', onTouchMove, { passive: true });
     window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('pointermove', onPointerMove, { passive: true });
-    window.addEventListener('pointerleave', onPointerLeave, { passive: true });
-
-    let rafId = 0;
-    const t0 = performance.now();
-    let prevNow = t0;
-
-    const tick = (now: number) => {
-      rafId = requestAnimationFrame(tick);
-      if (document.hidden) return;
-      const dt = Math.min(0.05, Math.max(0.001, (now - prevNow) / 1000));
-      const elapsed = (now - t0) / 1000;
-      prevNow = now;
-
-      // Silky double-damped 2-swipe coastal-drive settle (0.0 Science <-> 1.0 Design)
-      if (now - lastWheelTime > 190) {
-        if (settleTarget === null && programmaticTarget === null) {
-          const nearest: 0 | 1 = scrollTarget >= 0.45 ? FLOW_STOPS[1] : FLOW_STOPS[0];
-          settleTarget = nearest;
-          reportStop(nearest);
-        }
-        if (settleTarget !== null && Math.abs(scrollTarget - settleTarget) > 1e-4) {
-          scrollTarget +=
-            (settleTarget - scrollTarget) * (1 - Math.exp(-3.6 * dt));
-        } else if (settleTarget !== null) {
-          scrollTarget = settleTarget;
-        }
-      }
-
-      const chaseRate = programmaticTarget !== null ? 7.5 : 3.8;
-      scrollCurrent +=
-        (scrollTarget - scrollCurrent) * (1 - Math.exp(-chaseRate * dt));
-
-      if (Math.abs(scrollCurrent - lastPublished) > 0.0004) {
-        lastPublished = scrollCurrent;
-        onScrollProgressRef.current?.(scrollCurrent);
-      }
-
-      if (programmaticTarget !== null) {
-        if (Math.abs(scrollCurrent - programmaticTarget) < 0.025) {
-          programmaticTarget = null;
-        }
-      } else {
-        if (scrollCurrent > 0.65 && lastReportedStop !== 1) {
-          reportStop(1);
-        } else if (scrollCurrent < 0.35 && lastReportedStop !== 0) {
-          reportStop(0);
-        }
-      }
-
-      const mouseAlpha = 1 - Math.exp(-5.5 * dt);
-      curMouseX += (targetMouseX - curMouseX) * mouseAlpha;
-      curMouseY += (targetMouseY - curMouseY) * mouseAlpha;
-
-      const oscX = reducedMotion
-        ? 0
-        : Math.sin(elapsed * 0.72) * 3.0 + curMouseX * -10;
-      const oscY = reducedMotion
-        ? 0
-        : Math.cos(elapsed * 0.94) * 4.0 + curMouseY * -7;
-      const oscTilt = reducedMotion
-        ? 0
-        : Math.sin(elapsed * 0.65) * 0.22 + curMouseX * 0.35;
-
-      const vh = Math.max(1, window.innerHeight);
-
-      // Swipe 1 (0.0 — Science): "Made in Boca Raton." + narrative + SVG signature
-      if (narrativeRef.current) {
-        const narVis = smoothstep(0.56, 0.06, scrollCurrent);
-        const shiftY = -scrollCurrent * vh * 0.56;
-        narrativeRef.current.style.opacity = narVis.toFixed(3);
-        narrativeRef.current.style.visibility =
-          narVis > 0.01 ? 'visible' : 'hidden';
-        narrativeRef.current.style.transform = `translate3d(${Math.round(oscX)}px, ${Math.round(shiftY + oscY)}px, 0) rotate(${oscTilt.toFixed(2)}deg)`;
-      }
-    };
-
-    onScrollProgressRef.current?.(scrollCurrent);
     rafId = requestAnimationFrame(tick);
 
     return () => {
       cancelAnimationFrame(rafId);
-      externalJumpRef.current = null;
+      ro.disconnect();
       delete window.__setBocaStoryScroll;
       window.removeEventListener('wheel', onWheel);
       window.removeEventListener('touchstart', onTouchStart);
       window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerleave', onPointerLeave);
-      onScrollProgressRef.current?.(0);
-      onSelectHotspotRef.current?.(null);
     };
-  }, []);
+  }, [isDesign, glideToStop]);
+
+  const essayWords = isDesign ? DESIGN_ESSAY_WORDS : SCIENCE_ESSAY_WORDS;
 
   return (
     <motion.section
-      key="science-design-view"
-      initial={{ opacity: 0 }}
+      ref={stageRef}
+      key={`kinetic-${mode}`}
+      initial={{ opacity: 0, y: 16 }}
       animate={{
         opacity: 1,
-        transition: { duration: 0.48, ease: LUXURY_EASE },
+        y: 0,
+        transition: { duration: 0.95, ease: SOFT_ENTER_EASE },
       }}
       exit={{
         opacity: 0,
-        y: -10,
+        y: -12,
         pointerEvents: 'none',
-        transition: { duration: 0.28, ease: LUXURY_EASE },
+        transition: { duration: 0.62, ease: SOFT_EXIT_EASE },
       }}
-      aria-label="BOCA WATER Science and Design"
+      aria-label={isDesign ? 'BOCA WATER Design' : 'BOCA WATER Science'}
       className="fixed inset-0 z-20 pointer-events-none overflow-hidden"
     >
-      {/* Swipe 1 (0.0 — Science): "Made in Boca Raton." + word-by-word blur-in narrative + handwritten SVG signature */}
-      <div className="absolute inset-0 flex items-center justify-center px-6 pt-[var(--header-clearance)] pb-16 sm:px-[48px]">
-        <div
-          ref={narrativeRef}
-          className="flex max-w-[980px] w-full flex-col items-center text-center will-change-transform"
-        >
-          <h2 className="m-0 mb-6 font-editorial text-[32px] sm:text-[clamp(44px,4.8vw,66px)] font-normal leading-[1.06] tracking-[-0.02em] text-[var(--fg)]">
-            Made in Boca Raton.
-          </h2>
-          <div className="flex max-w-[330px] sm:max-w-[680px] flex-col items-center gap-5 font-editorial text-[19px] sm:text-[clamp(21px,2.15vw,29px)] font-normal leading-[1.52] tracking-[-0.012em] text-[var(--fg-soft)]">
-            {wordParagraphs.map((paraWords, paraIdx) => (
-              <p key={paraIdx} className="m-0 [text-wrap:balance]">
-                {paraWords.map(({ word, idx }) => (
-                  <motion.span
-                    key={`${word}-${idx}`}
-                    initial={{ opacity: 0, y: 8, filter: 'blur(10px)' }}
-                    animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-                    transition={{
-                      duration: 0.82,
-                      delay: 0.14 + idx * 0.032,
-                      ease: LUXURY_EASE,
-                    }}
-                    className="inline-block mr-[0.24em] will-change-[transform,opacity,filter]"
-                  >
-                    {word}
-                  </motion.span>
-                ))}
-              </p>
-            ))}
-          </div>
-
-          {/* Small, refined architectural handwritten pen-stroke signature */}
-          <svg
-            width="132"
-            height="40"
-            viewBox="0 0 136 42"
-            fill="none"
-            aria-label="Boca Water signature"
-            className="mt-6 text-[var(--fg-soft)]"
+      {/* SECTION 0 (p = 0.0):
+          - Science: "Made in Boca Raton." releasing word-by-word on lock
+          - Design: Unobstructed full-viewport 360-deg rotatable 3D bottle + subtle scroll cue */}
+      <div
+        ref={section0Ref}
+        className="absolute inset-0 flex flex-col items-center justify-center px-6 pt-[var(--header-clearance)] pb-16 sm:px-[48px] pointer-events-none will-change-transform"
+      >
+        {!isDesign && (
+          <h1
+            key={`s0-title-${state0Key}`}
+            className="m-0 flex flex-wrap items-baseline justify-center gap-x-[0.26em] text-center font-editorial text-[clamp(46px,11.6vw,62px)] sm:text-[clamp(76px,8.8vw,138px)] font-normal leading-[0.98] tracking-[-0.03em] text-[var(--fg)]"
           >
-            <motion.path
-              d="M12 29 C16 14, 24 8, 28 11 C31 13, 21 24, 17 27 C24 22, 34 18, 37 22 C39 25, 34 29, 39 27 C45 25, 51 16, 56 17 C59 18, 54 27, 59 26 C64 25, 70 19, 75 21 C79 23, 77 28, 84 25 C92 22, 102 18, 122 19"
-              stroke="currentColor"
-              strokeWidth="1.35"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              initial={{ pathLength: 0, opacity: 0 }}
-              animate={{ pathLength: 1, opacity: 0.78 }}
-              transition={{
-                pathLength: {
-                  duration: 1.35,
-                  delay: signatureDelay,
-                  ease: LUXURY_EASE,
-                },
-                opacity: {
-                  duration: 0.3,
-                  delay: Math.max(0, signatureDelay - 0.05),
-                },
-              }}
-            />
-          </svg>
-        </div>
+            {SCIENCE_TITLE_WORDS.map((word, idx) => (
+              <motion.span
+                key={`${state0Key}-${word}`}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{
+                  duration: 0.72,
+                  delay: 0.14 + idx * 0.22,
+                  ease: SOFT_ENTER_EASE,
+                }}
+                className="inline-block"
+              >
+                {word}
+              </motion.span>
+            ))}
+          </h1>
+        )}
+
+        <button
+          type="button"
+          onClick={() => glideToStop(1)}
+          aria-label={
+            isDesign
+              ? 'Scroll down to read about Boca Water design'
+              : 'Scroll down to read about Boca Water science'
+          }
+          className="pointer-events-auto absolute bottom-8 sm:bottom-11 left-1/2 -translate-x-1/2 flex h-11 w-11 items-center justify-center rounded-full border-none bg-transparent pt-[2px] text-[var(--fg-muted)] transition-colors duration-300 hover:text-[var(--fg)] active:scale-95"
+        >
+          <ChevronDown className="h-5 w-5" strokeWidth={1.5} aria-hidden="true" />
+        </button>
+      </div>
+
+      {/* SECTION 1 (p = 1.0):
+          Identical gallery layout for BOTH Science & Design — really large editorial serif
+          statement writing out smoothly word-by-word as Section 1 hits its locking state. */}
+      <div
+        ref={section1Ref}
+        style={{ opacity: 0, visibility: 'hidden' }}
+        className="absolute inset-0 flex flex-col items-center justify-center px-6 pt-[var(--header-clearance)] pb-16 sm:px-[48px] lg:px-[72px] pointer-events-none will-change-transform"
+      >
+        <button
+          type="button"
+          onClick={() => glideToStop(0)}
+          aria-label={
+            isDesign
+              ? 'Scroll up to inspect the 3D bottle'
+              : 'Scroll up to Made in Boca Raton'
+          }
+          className="pointer-events-auto mb-6 sm:mb-8 flex h-10 w-10 items-center justify-center rounded-full border-none bg-transparent pt-[2px] text-[var(--fg-muted)] transition-colors duration-300 hover:text-[var(--fg)] active:scale-95"
+        >
+          <ChevronUp className="h-5 w-5" strokeWidth={1.5} aria-hidden="true" />
+        </button>
+
+        <p
+          key={`s1-essay-${state1Key}`}
+          className="m-0 max-w-[min(92vw,1060px)] text-center font-editorial text-[clamp(24px,5.5vw,30px)] sm:text-[clamp(34px,3.35vw,50px)] font-normal leading-[1.2] tracking-[-0.02em] text-[var(--fg)] [text-wrap:balance]"
+        >
+          {state1Key > 0 &&
+            essayWords.map((word, idx) => (
+              <motion.span
+                key={`${state1Key}-${idx}`}
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{
+                  duration: 0.62,
+                  delay: 0.06 + idx * 0.045,
+                  ease: SOFT_ENTER_EASE,
+                }}
+                className="inline-block mr-[0.26em]"
+              >
+                {word}
+              </motion.span>
+            ))}
+        </p>
       </div>
     </motion.section>
   );

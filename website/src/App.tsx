@@ -51,6 +51,8 @@ export function App() {
   const [theme, setTheme] = useState<ThemeMode>('light');
   const [goldWordmark, setGoldWordmark] = useState(true);
   const [activeView, setActiveView] = useState<SiteView>('home');
+  const [scienceVisitKey, setScienceVisitKey] = useState(0);
+  const [designVisitKey, setDesignVisitKey] = useState(0);
   const storyScrollProgressRef = useRef(0);
   const shopScrollProgressRef = useRef(0);
   const [activeHotspot, setActiveHotspot] = useState<ScienceHotspotId | null>(
@@ -357,10 +359,10 @@ export function App() {
   const handleDirectReturnToTop = useCallback(() => {
     clearReturnTimers();
     glideRef.current = null;
-    // Trigger BottleScene's calm 1.15s direct glide & softly fade Beat 4 out (0..280ms)
+    // Trigger BottleScene's calm, drawn-out 1.55s direct glide & softly dissolve Beat 4 (0..420ms)
     setDirectReturn(true);
     setStageHiddenForReturn(true);
-    // Reset scroll silently to 0.00 once Beat 4 has faded out (300ms) so Beats 2 & 3 never flash past
+    // Reset scroll silently to 0.00 once Beat 4 has faded out (440ms) so Beats 2 & 3 never flash past
     directReturnResetTimerRef.current = window.setTimeout(() => {
       directReturnResetTimerRef.current = null;
       scrollTargetRef.current = 0;
@@ -370,16 +372,16 @@ export function App() {
       if (hostRef.current) {
         hostRef.current.style.setProperty('--scroll-p', '0.00000');
       }
-    }, 300);
-    // Fade Beat 1 softly back in (780..1200ms) as the calm direct glide settles cleanly into Beat 1
+    }, 440);
+    // Softly bloom Beat 1 back in (980..1580ms) as the calm direct glide settles into Beat 1
     directReturnFadeTimerRef.current = window.setTimeout(() => {
       directReturnFadeTimerRef.current = null;
       setStageHiddenForReturn(false);
-    }, 780);
+    }, 980);
     directReturnTimerRef.current = window.setTimeout(() => {
       directReturnTimerRef.current = null;
       setDirectReturn(false);
-    }, 1200);
+    }, 1580);
   }, [clearReturnTimers]);
 
   useEffect(() => {
@@ -404,7 +406,12 @@ export function App() {
       if (normalized !== 'design') {
         setActiveHotspot(null);
       }
-      if (!wasInScienceDesign) {
+      if (normalized === 'science') {
+        setScienceVisitKey((k) => k + 1);
+      } else if (normalized === 'design') {
+        setDesignVisitKey((k) => k + 1);
+      }
+      if (!wasInScienceDesign || normalized === 'science' || normalized === 'design') {
         storyScrollProgressRef.current = normalized === 'design' ? 1 : 0;
       }
       shopScrollProgressRef.current = 0;
@@ -510,7 +517,11 @@ export function App() {
           lightingPreset="studio-dark"
           theme={theme}
           goldWordmark={goldWordmark}
-          viewMode={isScienceDesignView ? 'story' : activeView}
+          viewMode={
+            activeView === 'about' || activeView === 'story'
+              ? 'science'
+              : activeView
+          }
           packMode={effectivePackMode}
           packExpanded={effectivePackExpanded}
           hoveredPack={activeView === 'shop' ? hoveredPack : null}
@@ -543,17 +554,17 @@ export function App() {
         {activeView === 'home' && (
           <motion.div
             key="home-stage"
-            initial={introComplete ? { opacity: 0, y: 12 } : false}
+            initial={introComplete ? { opacity: 0, y: 18 } : false}
             animate={{
               opacity: 1,
               y: 0,
-              transition: { duration: 0.48, ease: LUXURY_EASE },
+              transition: { duration: 0.95, ease: [0.16, 1, 0.3, 1] },
             }}
             exit={{
               opacity: 0,
-              y: -10,
+              y: -12,
               pointerEvents: 'none',
-              transition: { duration: 0.28, ease: LUXURY_EASE },
+              transition: { duration: 0.62, ease: LUXURY_EASE },
             }}
             className="fixed inset-0 z-20 pointer-events-none"
           >
@@ -572,6 +583,7 @@ export function App() {
             key="shop-view"
             selectedPack={selectedPack}
             packExpanded={packExpanded}
+            goldWordmark={goldWordmark}
             onSelectPack={handleSelectPack}
             onToggleExpand={handleToggleExpand}
             onHoverPack={setHoveredPack}
@@ -581,7 +593,12 @@ export function App() {
 
         {isScienceDesignView && (
           <AboutView
-            key="science-design-view"
+            key={
+              activeView === 'design'
+                ? `design-view-${designVisitKey}`
+                : `science-view-${scienceVisitKey}`
+            }
+            mode={activeView === 'design' ? 'design' : 'science'}
             targetStop={activeView === 'design' ? 1 : 0}
             onStopChange={handleScienceStopChange}
             onScrollProgress={handleStoryScrollProgress}

@@ -44,7 +44,7 @@ export function Navbar({
               ? undefined
               : { WebkitTextStroke: '0.45px currentColor' }
           }
-          className={`pointer-events-auto whitespace-nowrap border-0 bg-transparent px-0 pt-[2px] pb-0 font-editorial text-[24px] sm:text-[28px] font-normal leading-none tracking-[0.02em] transition-opacity duration-200 hover:opacity-78 ${
+          className={`pointer-events-auto whitespace-nowrap border-0 bg-transparent px-0 pt-[2px] pb-0 font-editorial text-[24px] sm:text-[28px] font-normal leading-none tracking-[0.02em] transition-opacity duration-500 hover:opacity-78 ${
             goldWordmark ? 'boca-logo-gold' : 'text-[var(--fg)]'
           }`}
         >
@@ -59,7 +59,7 @@ export function Navbar({
             type="button"
             onClick={() => onSelectView('shop')}
             aria-current={isShop ? 'page' : undefined}
-            className={`whitespace-nowrap border-0 bg-transparent px-0 pt-[2px] pb-0 font-editorial text-[18px] sm:text-[19px] font-normal leading-none tracking-[0.005em] text-[var(--fg)] transition-opacity duration-200 ${
+            className={`whitespace-nowrap border-0 bg-transparent px-0 pt-[2px] pb-0 font-editorial text-[18px] sm:text-[19px] font-normal leading-none tracking-[0.005em] text-[var(--fg)] transition-opacity duration-500 ${
               isHome || isShop
                 ? 'opacity-100 hover:opacity-70'
                 : 'opacity-35 hover:opacity-70'
@@ -71,7 +71,7 @@ export function Navbar({
             type="button"
             onClick={() => onSelectView('science')}
             aria-current={isScience ? 'page' : undefined}
-            className={`whitespace-nowrap border-0 bg-transparent px-0 pt-[2px] pb-0 font-editorial text-[18px] sm:text-[19px] font-normal leading-none tracking-[0.005em] text-[var(--fg)] transition-opacity duration-200 ${
+            className={`whitespace-nowrap border-0 bg-transparent px-0 pt-[2px] pb-0 font-editorial text-[18px] sm:text-[19px] font-normal leading-none tracking-[0.005em] text-[var(--fg)] transition-opacity duration-500 ${
               isHome || isScience
                 ? 'opacity-100 hover:opacity-70'
                 : 'opacity-35 hover:opacity-70'
@@ -83,7 +83,7 @@ export function Navbar({
             type="button"
             onClick={() => onSelectView('design')}
             aria-current={isDesign ? 'page' : undefined}
-            className={`whitespace-nowrap border-0 bg-transparent px-0 pt-[2px] pb-0 font-editorial text-[18px] sm:text-[19px] font-normal leading-none tracking-[0.005em] text-[var(--fg)] transition-opacity duration-200 ${
+            className={`whitespace-nowrap border-0 bg-transparent px-0 pt-[2px] pb-0 font-editorial text-[18px] sm:text-[19px] font-normal leading-none tracking-[0.005em] text-[var(--fg)] transition-opacity duration-500 ${
               isHome || isDesign
                 ? 'opacity-100 hover:opacity-70'
                 : 'opacity-35 hover:opacity-70'
