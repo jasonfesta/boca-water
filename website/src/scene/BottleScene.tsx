@@ -683,9 +683,9 @@ export function BottleScene({
       }
 
       // Continuously cull single hero can only once smoothly off-screen below (zero abrupt pop-in/out)
-      stagePivot.visible = stagePivot.position.y > -5.5;
+      stagePivot.visible = stagePivot.position.y > -4.35;
 
-      // Update real 3D Shop 6-item grid: 1:1 DOM-slot unprojection locked to live viewport & camera
+      // Update real 3D Shop 3-pack trio: 1:1 DOM-slot unprojection locked to live viewport & camera
       shopTrio.update(
         elapsed,
         dt,
@@ -705,7 +705,7 @@ export function BottleScene({
       lighting.update(elapsed, scrollState, currentTheme);
       viewportSize.width = viewportW;
       viewportSize.height = viewportH;
-      backdrop.update(elapsed, scrollState, viewportSize, currentTheme);
+      backdrop.update(elapsed, scrollState, viewportSize, currentTheme, currentView === 'home');
 
       // Design screen uses pure monumental 3D bottle with zero "+" hotspot overlays
       const outHotspots = hotspotPositionsOutRef.current?.current ??

@@ -160,50 +160,63 @@ const BACKDROP_FRAGMENT_SHADER = /* glsl */ `
   }
 
   // Analytical shared sky + horizon haze function (both sky & ocean fog sample this
-  // exact function so the sea melts into the sky with zero hard seam line).
-  // Beat 4 ("Live in the clear.") bathes the horizon in luminous sunlit 24k champagne-gold
-  // in Light Mode and molten gold-on-obsidian in Dark Mode.
+  // exact function so the water melts into the sky with zero hard seam line).
+  // Beat 4 ("Live in the clear.") frames pure, sunlit crystal-clear mineral water
+  // in Light Mode and crystal-clear moonlit glass water in Dark Mode.
   vec3 evalSkyHaze(vec3 rd, vec3 lightDir, float darkMix) {
     float elev = clamp(max(rd.y, 0.0), 0.0, 1.0);
     float lCos = max(dot(normalize(rd), lightDir), 0.0);
 
-    vec3 goldGlow = vec3(1.0, 0.80, 0.26);
-    vec3 goldCore = vec3(1.0, 0.96, 0.80);
+    vec3 moonGlow = vec3(0.84, 0.93, 1.0);
+    vec3 pureWhite = vec3(1.0, 1.0, 1.0);
 
-    // Dark Mode: Warm obsidian zenith melting into whispered molten-gold horizon glow
-    vec3 nightZenith = vec3(0.0018, 0.0014, 0.0008);
-    vec3 nightHorizon = vec3(0.026, 0.017, 0.0045);
+    // Dark Mode: Crisp obsidian zenith melting into clean crystal-lunar horizon
+    vec3 nightZenith = vec3(0.0012, 0.0018, 0.0026);
+    vec3 nightHorizon = vec3(0.010, 0.016, 0.024);
     vec3 nightSky = mix(nightHorizon, nightZenith, pow(elev, 0.48));
-    nightSky += goldGlow * (pow(lCos, 16.0) * 0.11 + pow(lCos, 68.0) * 0.24) * uIntensity;
-    nightSky += goldCore * pow(lCos, 160.0) * 0.18 * uIntensity;
+    nightSky += moonGlow * (pow(lCos, 16.0) * 0.085 + pow(lCos, 68.0) * 0.18) * uIntensity;
+    nightSky += pureWhite * pow(lCos, 160.0) * 0.16 * uIntensity;
 
-    // Light Mode: Sunlit warm alabaster-champagne sky with golden-hour solar aureole
-    vec3 dayZenith = vec3(0.91, 0.88, 0.80);
-    vec3 dayHorizon = vec3(0.99, 0.95, 0.85);
-    vec3 daySky = mix(dayHorizon, dayZenith, pow(elev, 0.58));
-    daySky += goldGlow * (pow(lCos, 10.0) * 0.18 + pow(lCos, 44.0) * 0.26);
-    daySky += goldCore * pow(lCos, 110.0) * 0.24;
+    // Light Mode: Pure sunlit daylight air melting into luminous crystal-white horizon (zero gold, zero gray)
+    vec3 dayZenith = vec3(0.88, 0.93, 0.96);
+    vec3 dayHorizon = vec3(0.975, 0.985, 0.992);
+    vec3 daySky = mix(dayHorizon, dayZenith, pow(elev, 0.56));
+    daySky += pureWhite * (pow(lCos, 12.0) * 0.15 + pow(lCos, 52.0) * 0.24 + pow(lCos, 130.0) * 0.22);
 
     return mix(daySky, nightSky, darkMix);
   }
 
-  // Organic 3D world-space twinkling 24k gold & diamond facet sparkles riding Gerstner waves.
+  // Soft refracted underwater caustic light pattern visible through shallow crystal-clear water
+  float evalCrystalCaustics(vec2 xz, vec3 N, float t, float footprint) {
+    float cFade = 1.0 - smoothstep(0.16, 1.65, footprint);
+    if (cFade <= 0.004) return 0.0;
+    vec2 refrXZ = xz + N.xz * 2.4;
+    vec2 u1 = refrXZ * 0.26 + vec2(t * 0.14, -t * 0.19);
+    vec2 u2 = vec2(-refrXZ.y, refrXZ.x) * 0.34 + vec2(-t * 0.16, t * 0.12);
+    float w1 = abs(vnoise(u1) - 0.5);
+    float w2 = abs(vnoise(u2) - 0.5);
+    float net1 = pow(clamp(1.0 - w1 * 2.4, 0.0, 1.0), 4.0);
+    float net2 = pow(clamp(1.0 - w2 * 2.4, 0.0, 1.0), 4.0);
+    return clamp((net1 * 0.65 + net2 * 0.55) * cFade, 0.0, 1.0);
+  }
+
+  // Organic 3D world-space twinkling diamond-white sunlight sparkles riding Gerstner waves.
   // Fine jewel-scale pinpoints modulated by wave slope & sun path, footprint-antialiased so
-  // near & mid water shimmers with luxury golden dust while the horizon stays silky smooth.
-  void evalGoldWaterSparkles(
+  // near & mid water shimmers cleanly while the distant horizon stays silky smooth.
+  void evalWaterSparkles(
     vec2 worldXZ,
     vec3 N,
     float crestFactor,
     float specDot,
     float t,
     float footprint,
-    out float outGoldHalo,
+    out float outHalo,
     out float outDiamondCore
   ) {
-    outGoldHalo = 0.0;
+    outHalo = 0.0;
     outDiamondCore = 0.0;
 
-    // Layer 1: Crisp sunlit diamond-gold micro-glints along shimmering wave crests
+    // Layer 1: Crisp sunlit diamond micro-glints along shimmering wave crests
     float fade1 = 1.0 - smoothstep(0.14, 1.45, footprint);
     if (fade1 > 0.004) {
       vec2 p1 = worldXZ * 2.35 + vec2(t * 0.14, -t * 0.26);
@@ -227,11 +240,11 @@ const BACKDROP_FRAGMENT_SHADER = /* glsl */ `
       float gate = step(0.54, hA);
       float sunBias = 0.18 + 0.82 * clamp(pow(specDot, 2.6) + crestFactor * 0.42, 0.0, 1.0);
 
-      outGoldHalo += gate * tw * halo * sunBias * fade1;
+      outHalo += gate * tw * halo * sunBias * fade1;
       outDiamondCore += gate * tw * (core + star * 0.44) * sunBias * fade1;
     }
 
-    // Layer 2: Ultra-fine 24k champagne gold-dust sparkle across sunlit ripples
+    // Layer 2: Ultra-fine sunlit crystal sparkle dust across clear ripples
     float fade2 = 1.0 - smoothstep(0.06, 0.72, footprint);
     if (fade2 > 0.004) {
       vec2 p2 = worldXZ * 5.4 + vec2(-t * 0.20, t * 0.32);
@@ -251,11 +264,11 @@ const BACKDROP_FRAGMENT_SHADER = /* glsl */ `
       float gate = step(0.46, hA);
       float sunBias = 0.20 + 0.80 * clamp(pow(specDot, 2.0) + crestFactor * 0.55, 0.0, 1.0);
 
-      outGoldHalo += gate * tw * halo * sunBias * fade2 * 0.92;
+      outHalo += gate * tw * halo * sunBias * fade2 * 0.92;
       outDiamondCore += gate * tw * core * sunBias * fade2 * 0.88;
     }
 
-    // Layer 3: Mid-distance sun-path glittering shimmer dust (bridges near glints to horizon silk)
+    // Layer 3: Mid-distance sun-path glittering shimmer (bridges near glints to horizon silk)
     float fade3 = smoothstep(0.04, 0.28, footprint) * (1.0 - smoothstep(0.42, 2.4, footprint));
     if (fade3 > 0.004) {
       vec2 p3 = worldXZ * 1.45 + vec2(t * 0.09, -t * 0.15);
@@ -266,7 +279,7 @@ const BACKDROP_FRAGMENT_SHADER = /* glsl */ `
       float core = smoothstep(0.065, 0.008, length(d));
       float tw = pow(max(0.0, sin(t * (2.4 + hB * 2.8) + hA * 62.83 + dot(N.xz, vec2(7.0, 9.0)))), 11.0);
       float sunCorridor = pow(specDot, 4.0);
-      outGoldHalo += step(0.42, hA) * tw * core * sunCorridor * fade3 * 0.95;
+      outHalo += step(0.42, hA) * tw * core * sunCorridor * fade3 * 0.95;
       outDiamondCore += step(0.42, hA) * tw * core * sunCorridor * fade3 * 1.1;
     }
   }
@@ -488,44 +501,53 @@ const BACKDROP_FRAGMENT_SHADER = /* glsl */ `
 
         vec3 reflCol = evalSkyHaze(R, lightDir, uDarkMix);
 
-        // GGX-style multi-lobe 24k golden specular shimmer + 3D wave-coupled gold facet sparkles
+        // GGX-style multi-lobe crystal specular shimmer + underwater caustics + 3D diamond facet sparkles
         float specDot = max(dot(R, lightDir), 0.0);
         float sparkleHalo = 0.0;
         float sparkleCore = 0.0;
-        evalGoldWaterSparkles(worldXZ, N, crestFactor, specDot, uTime * 0.95, footprint, sparkleHalo, sparkleCore);
+        evalWaterSparkles(worldXZ, N, crestFactor, specDot, uTime * 0.95, footprint, sparkleHalo, sparkleCore);
+        float caustics = evalCrystalCaustics(worldXZ, N, uTime * 0.95, footprint);
 
-        vec3 gold24k = vec3(1.00, 0.76, 0.16);
-        vec3 goldChampagne = vec3(1.00, 0.89, 0.46);
-        vec3 goldDiamond = vec3(1.00, 0.98, 0.86);
+        vec3 crystalTint = vec3(0.84, 0.95, 1.00);
+        vec3 crystalSilk = vec3(0.95, 0.99, 1.00);
+        vec3 pureDiamond = vec3(1.00, 1.00, 1.00);
 
         vec3 seaDark = vec3(0.0);
         if (uDarkMix > 0.002) {
-          // Dark Mode: Glossy black-obsidian sea troughs + molten 24k gold ribbons & dancing diamond-gold sparkles
-          vec3 deepDarkBody = vec3(0.003, 0.002, 0.0006) + vec3(0.052, 0.034, 0.006) * crestFactor;
+          // Dark Mode: Crystal-clear black-glass spring water with crisp liquid-silver ripples & diamond sparkles
+          vec3 deepDarkBody =
+            vec3(0.0018, 0.0038, 0.0056) +
+            vec3(0.010, 0.024, 0.032) * crestFactor +
+            vec3(0.012, 0.026, 0.034) * caustics * (1.0 - fresnel);
           seaDark = mix(deepDarkBody, reflCol, clamp(fresnel * 0.80, 0.0, 0.86));
-          float darkGoldRazor = pow(specDot, 220.0) * 1.65;
-          float darkGoldSilk = pow(specDot, 46.0) * 0.42;
-          float darkGoldWake = pow(specDot, 11.0) * 0.085;
-          seaDark += (goldDiamond * darkGoldRazor + goldChampagne * darkGoldSilk + gold24k * darkGoldWake) * uIntensity;
-          seaDark += (gold24k * sparkleHalo * 1.15 + goldDiamond * sparkleCore * 1.65) * uIntensity;
+          float darkRazor = pow(specDot, 220.0) * 1.65;
+          float darkSilk = pow(specDot, 46.0) * 0.36;
+          float darkWake = pow(specDot, 11.0) * 0.065;
+          seaDark += (pureDiamond * darkRazor + crystalSilk * darkSilk + crystalTint * darkWake) * uIntensity;
+          seaDark += (crystalTint * sparkleHalo * 0.95 + pureDiamond * sparkleCore * 1.65) * uIntensity;
         }
 
         vec3 seaLight = vec3(0.0);
         if (uDarkMix < 0.998) {
-          // Light Mode: Luminous clear champagne-gold coastal water (zero gray!) with
-          // warm translucent amber-gold troughs, molten 24k wave crests, and crisp twinkling sparkles
-          float glitterTight = pow(specDot, 180.0) * 1.35;
-          float glitterMid = pow(specDot, 38.0) * 0.48;
-          float glitterBroad = pow(specDot, 9.0) * 0.22;
-          vec3 deepLightBody = vec3(0.46, 0.32, 0.09) + vec3(0.44, 0.30, 0.06) * crestFactor;
-          seaLight = mix(deepLightBody, reflCol, clamp(fresnel * 0.78 + 0.16, 0.0, 0.92));
-          seaLight += gold24k * glitterBroad + goldChampagne * glitterMid + goldDiamond * glitterTight;
-          seaLight += gold24k * sparkleHalo * 0.85 + goldDiamond * sparkleCore * 1.25;
+          // Light Mode: Sunlit crystal-clear mineral water (zero gold, zero gray!) with
+          // bright transparent glass troughs, refracted underwater caustics, and crisp diamond sparkles
+          float glitterTight = pow(specDot, 175.0) * 1.40;
+          float glitterMid = pow(specDot, 38.0) * 0.42;
+          float glitterBroad = pow(specDot, 9.0) * 0.16;
+          // Clear glassy water transmission over a sunlit bright mineral bed + shimmering caustics
+          vec3 clearTrough = vec3(0.56, 0.72, 0.78) + vec3(0.14, 0.17, 0.16) * crestFactor;
+          vec3 refractedBed = mix(clearTrough, vec3(0.95, 0.99, 1.00), caustics * 0.58);
+          // Subtle glass wave-slope shading so ripples stay crisply sculpted & translucent
+          float slopeContour = clamp(dot(N, normalize(vec3(-0.35, 0.88, 0.32))), 0.0, 1.0);
+          refractedBed *= mix(0.84, 1.06, slopeContour);
+          seaLight = mix(refractedBed, reflCol, clamp(fresnel * 0.74 + 0.14, 0.0, 0.90));
+          seaLight += crystalTint * glitterBroad + crystalSilk * glitterMid + pureDiamond * glitterTight;
+          seaLight += crystalTint * sparkleHalo * 0.65 + pureDiamond * sparkleCore * 1.35;
         }
 
         vec3 seaCol = mix(seaLight, seaDark, uDarkMix);
 
-        // Fog ocean into the exact same golden-hour sky haze function (zero hard horizon seam!)
+        // Fog water into the exact same sunlit clear-air sky haze (zero hard horizon seam!)
         float horizonFog = 1.0 - exp(-dClamped * 0.0068);
         oceanScene = mix(seaCol, skyCol, clamp(horizonFog, 0.0, 1.0));
       }
@@ -785,7 +807,8 @@ export function createBackdrop(
     time: number,
     scroll: ScrollState,
     viewport: { width: number; height: number },
-    theme?: 'dark' | 'light'
+    theme?: 'dark' | 'light',
+    isHomeView = true
   ): void => {
     const resolvedTheme = theme ?? scroll.theme;
     if (resolvedTheme !== undefined) {
@@ -811,12 +834,17 @@ export function createBackdrop(
       current.darkMix += (targetDarkMix - current.darkMix) * (1 - Math.exp(-dt * 14.0));
     }
 
-    // Stage 2 (Beats 2 -> 3): progressively deeper capillary liquid presence
+    // Smoothly damp Stage 2 capillary liquid & Stage 3 Beat-4 ocean transitions so
+    // switching from Beat 4 to Shop / Science / Design / Press never flashes or snaps!
     const pOcean = Math.max(scroll.progress, scroll.rawProgress * 0.92);
-    current.liquidMix = THREE.MathUtils.smoothstep(pOcean, 0.14, 0.60);
-
-    // Stage 3 (Beat 4): smooth crossfade into the 3D perspective Gerstner ocean horizon
-    current.oceanMix = THREE.MathUtils.smoothstep(pOcean, 0.64, 0.92);
+    const targetLiquid = isHomeView ? THREE.MathUtils.smoothstep(pOcean, 0.14, 0.60) : 0;
+    const targetOcean = isHomeView ? THREE.MathUtils.smoothstep(pOcean, 0.64, 0.92) : 0;
+    const waterBlendRate = isHomeView ? 7.5 : 4.2;
+    const waterAlpha = 1 - Math.exp(-dt * waterBlendRate);
+    current.liquidMix += (targetLiquid - current.liquidMix) * waterAlpha;
+    current.oceanMix += (targetOcean - current.oceanMix) * waterAlpha;
+    if (Math.abs(targetLiquid - current.liquidMix) < 0.001) current.liquidMix = targetLiquid;
+    if (Math.abs(targetOcean - current.oceanMix) < 0.001) current.oceanMix = targetOcean;
 
     const targetPtrX = scroll.pointerX * params.parallaxStrength;
     const targetPtrY = -scroll.pointerY * params.parallaxStrength * 0.8;

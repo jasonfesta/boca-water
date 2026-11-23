@@ -6,3 +6,4 @@ export {
 } from './KineticParallaxStage';
 export { ShopView, type ShopViewProps } from './ShopView';
 export { AboutView } from './AboutView';
+export { PressView } from './PressView';

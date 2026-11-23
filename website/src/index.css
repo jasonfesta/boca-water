@@ -16,6 +16,7 @@
     --fg-deep: #09090b;
     --fg-soft: rgba(17, 17, 19, 0.78);
     --fg-muted: rgba(17, 17, 19, 0.62);
+    --fg-btn-muted: #66666b;
     --fg-subtle: rgba(17, 17, 19, 0.44);
     --fg-copyright: rgba(17, 17, 19, 0.34);
     --fg-hairline: rgba(17, 17, 19, 0.12);
@@ -27,6 +28,7 @@
     --fg-deep: #f6f5f1;
     --fg-soft: rgba(246, 245, 241, 0.82);
     --fg-muted: rgba(246, 245, 241, 0.68);
+    --fg-btn-muted: #9a9aa0;
     --fg-subtle: rgba(246, 245, 241, 0.48);
     --fg-copyright: rgba(246, 245, 241, 0.30);
     --fg-hairline: rgba(246, 245, 241, 0.12);
@@ -267,7 +269,7 @@
   will-change: transform;
 }
 
-/* Minimal bottom-right corner controls (Reflective Gold finish + Dark/Light toggle) locked to 48px outer frame grid */
+/* Minimal bottom-right Dark/Light mode toggle locked to 48px outer frame grid */
 .orbs-corner-controls {
   position: fixed;
   bottom: var(--frame-pad);
@@ -278,7 +280,6 @@
   gap: 10px;
 }
 
-.orbs-gold-toggle,
 .orbs-theme-toggle {
   width: 36px;
   height: 36px;
@@ -294,36 +295,12 @@
   transition: opacity 0.2s ease, transform 0.14s ease;
 }
 
-.orbs-gold-toggle:hover,
-.orbs-theme-toggle:hover,
-.orbs-gold-toggle.is-active {
+.orbs-theme-toggle:hover {
   opacity: 1;
 }
 
-.orbs-gold-toggle:active,
 .orbs-theme-toggle:active {
   transform: scale(0.92);
-}
-
-.orbs-gold-coin {
-  width: 18px;
-  height: 18px;
-  border-radius: 9999px;
-  background: linear-gradient(
-    135deg,
-    #fff2c6 0%,
-    #e6be5c 38%,
-    #a87920 72%,
-    #f5d784 100%
-  );
-  box-shadow: inset 0 1px 1.5px rgba(255, 252, 235, 0.75),
-    inset 0 -1px 1.5px rgba(105, 72, 12, 0.45);
-  transition: box-shadow 0.24s ease, transform 0.24s ease;
-}
-
-.orbs-gold-toggle.is-active .orbs-gold-coin {
-  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.25px #d4a644,
-    inset 0 1px 1.5px rgba(255, 252, 235, 0.85);
 }
 
 @media (max-width: 639px) {
@@ -357,4 +334,16 @@
     bottom: 20px;
     right: 24px;
   }
+}
+
+/* Whisper-quiet light neutral transparency grid so black wordmarks & white lids stay legible in both Light and Dark Mode */
+.press-checker-bg {
+  background-color: #efede8;
+  background-image:
+    linear-gradient(45deg, #e5e3dc 25%, transparent 25%),
+    linear-gradient(-45deg, #e5e3dc 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e5e3dc 75%),
+    linear-gradient(-45deg, transparent 75%, #e5e3dc 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
 }

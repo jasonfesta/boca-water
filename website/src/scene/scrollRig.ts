@@ -290,9 +290,10 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
   // Beat 3 hypnotic slow axial spin accumulator
   let beat3AxialSpin = 0;
 
-  // Smooth view-mode transition choreography ('home' | 'shop' | 'science' | 'design' | 'story')
+  // Smooth view-mode transition choreography ('home' | 'shop' | 'science' | 'design' | 'press')
   let lastViewMode: SceneViewMode = 'home';
   let shopEntryTimer = 1.0;
+  let shopExitHoldTimer = 0;
   let exitLiftY = 0;
   let exitShiftX = 0;
   let storySmoothed = 0;
@@ -431,15 +432,26 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
       viewMode === 'story' ||
       viewMode === 'science' ||
       viewMode === 'about' ||
-      viewMode === 'design';
+      viewMode === 'design' ||
+      viewMode === 'press';
 
     const isDesignView = viewMode === 'design';
-    const isScienceOnlyView = viewMode === 'science' || viewMode === 'about';
+    const isScienceOnlyView =
+      viewMode === 'science' || viewMode === 'about' || viewMode === 'press';
 
-    // Detect view switches: drawn-out soft 3D damping with ZERO teleports or snaps!
+    // Detect view switches: silky continuous damping with ZERO teleports, snaps, or jerks!
     if (viewMode !== lastViewMode) {
+      const wasShop = lastViewMode === 'shop';
       viewTransitionTimer = 1.85;
       orbitActive = false;
+      if (wasShop && viewMode !== 'shop') {
+        // Let Shop's sequential reverse fade-out (Case -> Six-Pack -> Single) complete cleanly
+        // before the Hero or Design bottle glides back onto the stage.
+        shopExitHoldTimer = 0.72;
+      } else if (viewMode === 'shop') {
+        shopExitHoldTimer = 0;
+      }
+
       if (viewMode === 'shop') {
         shopEntryTimer = 0;
         designOrbitVelX = 0;
@@ -465,18 +477,17 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
         if (isDesignView) {
           designOrbitQuat.copy(IDENTITY_QUAT);
         }
-        const targetStoryInit = isScienceOnlyView
-          ? 0
-          : THREE.MathUtils.clamp(storyScrollProgress, 0, 1);
-        storySmoothed = targetStoryInit;
-        if (exitLiftY < -3.6) {
-          exitLiftY = -3.6;
-        }
       }
       lastViewMode = viewMode;
     }
     if (viewTransitionTimer > 0) {
       viewTransitionTimer = Math.max(0, viewTransitionTimer - clampedDt);
+    }
+    if (shopExitHoldTimer > 0) {
+      shopExitHoldTimer = Math.max(0, shopExitHoldTimer - clampedDt);
+      if (shopExitHoldTimer === 0) {
+        viewTransitionTimer = Math.max(viewTransitionTimer, 1.45);
+      }
     }
     if (viewMode === 'shop') {
       shopEntryTimer = Math.min(1.5, shopEntryTimer + clampedDt);
@@ -579,14 +590,14 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
       return state;
     }
 
-    // Soft, drawn-out damping on Science (0.0) & Design State 0 (1.0) <-> Design State 1 (0.0)
+    // Soft, responsive damping on Science (0.0) & Design State 0 (1.0) <-> Design State 1 (0.0)
     const rawStoryTarget = isScienceOnlyView
       ? 0
       : THREE.MathUtils.clamp(storyScrollProgress, 0, 1);
     storySmoothed = THREE.MathUtils.lerp(
       storySmoothed,
       rawStoryTarget,
-      1 - Math.exp(-clampedDt * 3.6)
+      1 - Math.exp(-clampedDt * 6.5)
     );
 
     // Enable unrestricted 360-deg orbit while inspecting the bottle in Design State 0
@@ -666,10 +677,11 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
     const isNarrow = aspect < 0.95;
     const isPortraitMobile = aspect < 0.75;
 
+    const holdingShopExit = shopExitHoldTimer > 0;
     const isMacroZoom = false;
     void activeHotspot;
 
-    if (viewMode === 'shop') {
+    if (viewMode === 'shop' || holdingShopExit) {
       const xScale = isNarrow ? 0.14 : 1.0;
       const zBoost = isNarrow ? 1.05 : 0.0;
       pose.bottlePos.set(
@@ -780,30 +792,19 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
     state.packMode = activePackMode;
     state.packExpanded = packExpanded;
 
-    // Smooth off-screen glide:
-    // - 'shop': hero can glides smoothly off-screen while ShopTrioShowcase owns the stage
-    // - 'science' (0.0) <-> 'design' (1.0): tucked cleanly below at 0.0, dead-center at 1.0
+    // Single-stage smooth off-screen offset (zero double-damping lag!):
+    // - 'shop' (or holding while Shop packs fade out): hero can glides cleanly off-screen (-4.8)
+    // - 'science' / 'press' (0.0) <-> 'design' (1.0): tucked cleanly below (-3.6) at 0.0, dead-center at 1.0
     const storyEnter = isStoryView
-      ? smootherstep((storySmoothed - 0.12) / 0.78)
+      ? smootherstep((storySmoothed - 0.08) / 0.84)
       : 1.0;
-    const targetExitY =
-      viewMode === 'shop'
-        ? -9.5
+    exitLiftY =
+      viewMode === 'shop' || holdingShopExit
+        ? -4.8
         : isStoryView
-          ? (1 - storyEnter) * -5.4
+          ? (1 - storyEnter) * -3.6
           : 0;
-    const targetExitX = 0;
-    const exitSpeed = viewMode === 'shop' ? 2.6 : isStoryView ? 3.2 : 2.4;
-    exitLiftY = THREE.MathUtils.lerp(
-      exitLiftY,
-      targetExitY,
-      1 - Math.exp(-clampedDt * exitSpeed)
-    );
-    exitShiftX = THREE.MathUtils.lerp(
-      exitShiftX,
-      targetExitX,
-      1 - Math.exp(-clampedDt * exitSpeed)
-    );
+    exitShiftX = 0;
 
     // Beat 3 (p = 2/3) & Beat 4 (p = 1.0) smooth C2-enveloped hypnotic axial spin (BOCA <-> WATER)
     // Wide smootherstep envelopes guarantee zero lock-state jumping across desktop & mobile,
@@ -904,16 +905,23 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
       smoothedScale = desiredScale;
       hasSmoothedPose = true;
     } else {
-      const posRate = viewTransitionTimer > 0 ? 2.75 : isStoryView ? 3.8 : 7.5;
+      const posRate =
+        viewMode === 'shop'
+          ? 6.2
+          : viewTransitionTimer > 0
+            ? 4.8
+            : isStoryView
+              ? 5.6
+              : 7.5;
       const rotRate =
         designOrbitActive && isUserDragging
           ? 20.0
           : designOrbitActive
             ? 11.0
             : viewTransitionTimer > 0
-              ? 2.75
+              ? 4.8
               : isStoryView
-                ? 4.2
+                ? 5.6
                 : 8.5;
       const posAlpha = 1 - Math.exp(-clampedDt * posRate);
       const rotAlpha = 1 - Math.exp(-clampedDt * rotRate);
@@ -931,7 +939,7 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
     const desiredCamY = pose.cameraPos.y + packExtraY - state.pointerY * 0.045;
     const desiredCamZ = pose.cameraPos.z + packExtraZ;
 
-    const camLerpRate = viewTransitionTimer > 0 ? 2.75 : isStoryView ? 3.4 : 5.2;
+    const camLerpRate = viewTransitionTimer > 0 ? 4.6 : isStoryView ? 5.0 : 5.6;
     const camAlpha = 1 - Math.exp(-clampedDt * camLerpRate);
     camera.position.lerp(
       pose.cameraPos.set(desiredCamX, desiredCamY, desiredCamZ),

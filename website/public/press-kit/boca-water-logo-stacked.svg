@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080">
+  <rect width="1080" height="1080" fill="#ffffff"/>
+  <g fill="#111113" font-family="Instrument Serif, Georgia, serif" text-anchor="middle" font-weight="400">
+    <text x="540" y="490" font-size="252" letter-spacing="-4">BOCA</text>
+    <text x="540" y="720" font-size="252" letter-spacing="-4">WATER</text>
+  </g>
+</svg>

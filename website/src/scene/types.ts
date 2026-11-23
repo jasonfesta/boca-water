@@ -43,7 +43,7 @@ export type ScienceHotspotPositions = Record<ScienceHotspotId, HotspotScreenPoin
  * Active top-level page view driving 3D stage enter/exit choreography.
  * ('about' and 'science' are supported alongside 'story' for clean compatibility.)
  */
-export type SceneViewMode = 'home' | 'shop' | 'story' | 'science' | 'about' | 'design';
+export type SceneViewMode = 'home' | 'shop' | 'story' | 'science' | 'about' | 'design' | 'press';
 
 /**
  * Active studio lighting & backdrop theme (starts in 'dark' by default).
@@ -128,7 +128,8 @@ export interface BackdropHandle {
     time: number,
     scroll: ScrollState,
     viewport: { width: number; height: number },
-    theme?: SceneTheme
+    theme?: SceneTheme,
+    isHomeView?: boolean
   ) => void;
   /** Optional runtime Dark / Light theme switch */
   setTheme?: (theme: SceneTheme) => void;

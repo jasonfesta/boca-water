@@ -1,4 +1,4 @@
-export type SiteView = 'home' | 'shop' | 'story' | 'science' | 'design' | 'about';
+export type SiteView = 'home' | 'shop' | 'story' | 'science' | 'design' | 'about' | 'press';
 
 export const SALE_BANNER_CONFIG = {
   enabled: true,
@@ -13,7 +13,7 @@ export interface NavbarProps {
 
 export function Navbar({
   activeView,
-  goldWordmark = true,
+  goldWordmark = false,
   onSelectView,
 }: NavbarProps) {
   const isHome = activeView === 'home';
@@ -23,6 +23,7 @@ export function Navbar({
     activeView === 'science' ||
     activeView === 'about';
   const isDesign = activeView === 'design';
+  const isPress = activeView === 'press';
 
   return (
     <header className="fixed inset-x-0 top-0 z-40 pointer-events-none">
@@ -53,13 +54,13 @@ export function Navbar({
 
         <nav
           aria-label="Primary"
-          className="pointer-events-auto flex items-center gap-5 sm:gap-9"
+          className="pointer-events-auto flex items-center gap-4 sm:gap-9"
         >
           <button
             type="button"
             onClick={() => onSelectView('shop')}
             aria-current={isShop ? 'page' : undefined}
-            className={`whitespace-nowrap border-0 bg-transparent px-0 pt-[2px] pb-0 font-editorial text-[18px] sm:text-[19px] font-normal leading-none tracking-[0.005em] text-[var(--fg)] transition-opacity duration-500 ${
+            className={`whitespace-nowrap border-0 bg-transparent px-0 pt-[2px] pb-0 font-editorial text-[16px] sm:text-[19px] font-normal leading-none tracking-[0.005em] text-[var(--fg)] transition-opacity duration-500 ${
               isHome || isShop
                 ? 'opacity-100 hover:opacity-70'
                 : 'opacity-35 hover:opacity-70'
@@ -71,7 +72,7 @@ export function Navbar({
             type="button"
             onClick={() => onSelectView('science')}
             aria-current={isScience ? 'page' : undefined}
-            className={`whitespace-nowrap border-0 bg-transparent px-0 pt-[2px] pb-0 font-editorial text-[18px] sm:text-[19px] font-normal leading-none tracking-[0.005em] text-[var(--fg)] transition-opacity duration-500 ${
+            className={`whitespace-nowrap border-0 bg-transparent px-0 pt-[2px] pb-0 font-editorial text-[16px] sm:text-[19px] font-normal leading-none tracking-[0.005em] text-[var(--fg)] transition-opacity duration-500 ${
               isHome || isScience
                 ? 'opacity-100 hover:opacity-70'
                 : 'opacity-35 hover:opacity-70'
@@ -83,13 +84,25 @@ export function Navbar({
             type="button"
             onClick={() => onSelectView('design')}
             aria-current={isDesign ? 'page' : undefined}
-            className={`whitespace-nowrap border-0 bg-transparent px-0 pt-[2px] pb-0 font-editorial text-[18px] sm:text-[19px] font-normal leading-none tracking-[0.005em] text-[var(--fg)] transition-opacity duration-500 ${
+            className={`whitespace-nowrap border-0 bg-transparent px-0 pt-[2px] pb-0 font-editorial text-[16px] sm:text-[19px] font-normal leading-none tracking-[0.005em] text-[var(--fg)] transition-opacity duration-500 ${
               isHome || isDesign
                 ? 'opacity-100 hover:opacity-70'
                 : 'opacity-35 hover:opacity-70'
             }`}
           >
             Design
+          </button>
+          <button
+            type="button"
+            onClick={() => onSelectView('press')}
+            aria-current={isPress ? 'page' : undefined}
+            className={`whitespace-nowrap border-0 bg-transparent px-0 pt-[2px] pb-0 font-editorial text-[16px] sm:text-[19px] font-normal leading-none tracking-[0.005em] text-[var(--fg)] transition-opacity duration-500 ${
+              isHome || isPress
+                ? 'opacity-100 hover:opacity-70'
+                : 'opacity-35 hover:opacity-70'
+            }`}
+          >
+            Press
           </button>
         </nav>
       </div>

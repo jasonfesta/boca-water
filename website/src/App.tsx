@@ -16,12 +16,31 @@ import {
   AboutView,
   KineticParallaxStage,
   Navbar,
+  PressView,
   ShopView,
   type SiteView,
 } from '@/components/layout';
 
 const SCROLL_STOPS = [0, 1 / 3, 2 / 3, 1] as const;
 const LUXURY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
+function isPressPathname(): boolean {
+  if (typeof window === 'undefined') return false;
+  return /^\/press(?:\/|$)/i.test(window.location.pathname);
+}
+
+function syncBrowserPath(view: SiteView): void {
+  if (typeof window === 'undefined') return;
+  if (!window.location.protocol.startsWith('http')) return;
+  try {
+    const targetPath = view === 'press' ? '/press' : '/';
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({ view }, '', targetPath);
+    }
+  } catch {
+    // Ignore history restrictions in sandboxed iframes / previews
+  }
+}
 
 export type ThemeMode = 'dark' | 'light';
 
@@ -49,8 +68,11 @@ export function App() {
   } | null>(null);
 
   const [theme, setTheme] = useState<ThemeMode>('light');
-  const [goldWordmark, setGoldWordmark] = useState(true);
-  const [activeView, setActiveView] = useState<SiteView>('home');
+  const goldWordmark = false;
+  const [activeView, setActiveView] = useState<SiteView>(() =>
+    isPressPathname() ? 'press' : 'home',
+  );
+  const [viewEnterDelay, setViewEnterDelay] = useState(0);
   const [scienceVisitKey, setScienceVisitKey] = useState(0);
   const [designVisitKey, setDesignVisitKey] = useState(0);
   const storyScrollProgressRef = useRef(0);
@@ -68,7 +90,10 @@ export function App() {
   });
   const [introComplete, setIntroComplete] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    return (
+      isPressPathname() ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    );
   });
   const [directReturn, setDirectReturn] = useState(false);
   const [stageHiddenForReturn, setStageHiddenForReturn] = useState(false);
@@ -90,6 +115,20 @@ export function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (isPressPathname()) {
+        setIntroComplete(true);
+        setActiveView('press');
+        storyScrollProgressRef.current = 0;
+      } else if (activeViewRef.current === 'press') {
+        setActiveView('home');
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -151,18 +190,22 @@ export function App() {
     window.__setBocaView = (view: SiteView) => {
       const normalized: SiteView =
         view === 'about' || view === 'story' ? 'science' : view;
+      const prev = activeViewRef.current;
       setIntroComplete(true);
+      setViewEnterDelay(prev === 'shop' && normalized !== 'shop' ? 0.48 : 0.14);
       setActiveView(normalized);
       setActiveHotspot(null);
       storyScrollProgressRef.current = normalized === 'design' ? 1 : 0;
       shopScrollProgressRef.current = 0;
-      if (
-        normalized === 'home' ||
-        normalized === 'shop' ||
-        normalized === 'science' ||
-        normalized === 'design'
-      ) {
-        jumpTo(0);
+      if (normalized === 'home' && prev !== 'home') {
+        glideRef.current = null;
+        scrollTargetRef.current = 0;
+        scrollCurrentRef.current = 0;
+        scrollSettleTargetRef.current = 0;
+        lastWheelTimeRef.current = 0;
+        if (hostRef.current) {
+          hostRef.current.style.setProperty('--scroll-p', '0.00000');
+        }
       }
     };
 
@@ -175,8 +218,8 @@ export function App() {
       setTheme(nextTheme);
     };
 
-    window.__setBocaGold = (gold: boolean) => {
-      setGoldWordmark(Boolean(gold));
+    window.__setBocaGold = () => {
+      // Reflective 24k gold wordmark is permanently enabled
     };
 
     const onWheel = (e: WheelEvent) => {
@@ -392,17 +435,34 @@ export function App() {
 
   const handleSelectView = useCallback(
     (view: SiteView) => {
+      const normalized: SiteView =
+        view === 'about' || view === 'story' ? 'science' : view;
+      const prevView = activeViewRef.current;
+
+      // Clicking the already-active non-home tab shouldn't remount or flicker
+      if (normalized === prevView && normalized !== 'home') {
+        return;
+      }
+
+      // Clicking the top-left logo while already on Home smoothly returns to Beat 1
+      if (normalized === 'home' && prevView === 'home') {
+        if (scrollCurrentRef.current > 0.68) {
+          handleDirectReturnToTop();
+        } else if (scrollCurrentRef.current > 0.02) {
+          handleJumpToProgress(0, 1050);
+        }
+        return;
+      }
+
       clearReturnTimers();
       setDirectReturn(false);
       setStageHiddenForReturn(false);
-      const normalized: SiteView =
-        view === 'about' || view === 'story' ? 'science' : view;
-      const wasInScienceDesign =
-        activeViewRef.current === 'science' ||
-        activeViewRef.current === 'story' ||
-        activeViewRef.current === 'design' ||
-        activeViewRef.current === 'about';
+
+      // When leaving Shop, hold incoming view briefly so Shop's sequential reverse fade-out finishes first
+      setViewEnterDelay(prevView === 'shop' ? 0.65 : 0.14);
       setActiveView(normalized);
+      syncBrowserPath(normalized);
+
       if (normalized !== 'design') {
         setActiveHotspot(null);
       }
@@ -411,21 +471,31 @@ export function App() {
       } else if (normalized === 'design') {
         setDesignVisitKey((k) => k + 1);
       }
-      if (!wasInScienceDesign || normalized === 'science' || normalized === 'design') {
-        storyScrollProgressRef.current = normalized === 'design' ? 1 : 0;
+
+      if (normalized === 'design') {
+        storyScrollProgressRef.current = 1;
+      } else if (normalized === 'science' || normalized === 'press') {
+        storyScrollProgressRef.current = 0;
       }
       shopScrollProgressRef.current = 0;
+
+      // Never snap Home's scroll backwards while Home is fading out; only reset cleanly
+      // to Beat 1 when returning to Home from another section.
       if (normalized === 'home') {
-        handleJumpToProgress(0);
+        glideRef.current = null;
+        scrollTargetRef.current = 0;
+        scrollCurrentRef.current = 0;
+        scrollSettleTargetRef.current = 0;
+        lastWheelTimeRef.current = 0;
+        if (hostRef.current) {
+          hostRef.current.style.setProperty('--scroll-p', '0.00000');
+        }
         setPackExpanded(false);
       } else if (normalized === 'shop') {
-        handleJumpToProgress(0);
         setPackExpanded(false);
-      } else if (normalized === 'science' || normalized === 'design') {
-        handleJumpToProgress(0);
       }
     },
-    [clearReturnTimers, handleJumpToProgress],
+    [clearReturnTimers, handleDirectReturnToTop, handleJumpToProgress],
   );
 
   const handleScienceStopChange = useCallback((stop: 0 | 1) => {
@@ -460,10 +530,6 @@ export function App() {
 
   const handleToggleTheme = useCallback(() => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
-  }, []);
-
-  const handleToggleGold = useCallback(() => {
-    setGoldWordmark((prev) => !prev);
   }, []);
 
   const renderWordmark = useCallback(
@@ -550,21 +616,25 @@ export function App() {
         onSelectView={handleSelectView}
       />
 
-      <AnimatePresence mode="wait">
+      <AnimatePresence>
         {activeView === 'home' && (
           <motion.div
             key="home-stage"
-            initial={introComplete ? { opacity: 0, y: 18 } : false}
+            initial={introComplete ? { opacity: 0, y: 14 } : false}
             animate={{
               opacity: 1,
               y: 0,
-              transition: { duration: 0.95, ease: [0.16, 1, 0.3, 1] },
+              transition: {
+                duration: 0.82,
+                delay: viewEnterDelay,
+                ease: [0.16, 1, 0.3, 1],
+              },
             }}
             exit={{
               opacity: 0,
-              y: -12,
+              y: -10,
               pointerEvents: 'none',
-              transition: { duration: 0.62, ease: LUXURY_EASE },
+              transition: { duration: 0.48, ease: LUXURY_EASE },
             }}
             className="fixed inset-0 z-20 pointer-events-none"
           >
@@ -584,6 +654,7 @@ export function App() {
             selectedPack={selectedPack}
             packExpanded={packExpanded}
             goldWordmark={goldWordmark}
+            enterDelay={viewEnterDelay}
             onSelectPack={handleSelectPack}
             onToggleExpand={handleToggleExpand}
             onHoverPack={setHoveredPack}
@@ -600,6 +671,7 @@ export function App() {
             }
             mode={activeView === 'design' ? 'design' : 'science'}
             targetStop={activeView === 'design' ? 1 : 0}
+            enterDelay={viewEnterDelay}
             onStopChange={handleScienceStopChange}
             onScrollProgress={handleStoryScrollProgress}
             activeHotspot={activeHotspot}
@@ -608,21 +680,14 @@ export function App() {
             goldWordmark={goldWordmark}
           />
         )}
+
+        {activeView === 'press' && (
+          <PressView key="press-view" enterDelay={viewEnterDelay} />
+        )}
       </AnimatePresence>
 
-      {/* Minimal bottom-right controls: Reflective 24k Gold logo coin toggle + Dark/Light mode toggle */}
+      {/* Minimal bottom-right Dark/Light mode toggle (reflective 24k gold always active) */}
       <div className="orbs-corner-controls">
-        <button
-          type="button"
-          onClick={handleToggleGold}
-          aria-label="Toggle reflective gold bottle logo"
-          aria-pressed={goldWordmark}
-          title="Reflective Gold Logo"
-          className={`orbs-gold-toggle ${goldWordmark ? 'is-active' : ''}`}
-        >
-          <span className="orbs-gold-coin" aria-hidden="true" />
-        </button>
-
         <button
           type="button"
           onClick={handleToggleTheme}

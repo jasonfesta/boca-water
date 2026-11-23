@@ -17,6 +17,7 @@ export interface ShopViewProps {
   selectedPack: ShopItemId;
   packExpanded: boolean;
   goldWordmark?: boolean;
+  enterDelay?: number;
   onSelectPack: (itemId: ShopItemId) => void;
   onToggleExpand: () => void;
   onHoverPack: (itemId: ShopItemId | null) => void;
@@ -33,6 +34,7 @@ const ALL_SHOP_ITEMS = SHOP_CATALOG_LIST;
 
 export function ShopView({
   selectedPack,
+  enterDelay = 0.14,
   onSelectPack,
   onHoverPack,
   onScrollProgress,
@@ -109,17 +111,20 @@ export function ShopView({
     <motion.section
       ref={scrollerRef}
       key="shop-view"
-      initial={{ opacity: 0, y: 18 }}
-      animate={{
-        opacity: 1,
-        y: 0,
-        transition: { duration: 0.95, ease: SOFT_ENTER_EASE },
-      }}
-      exit={{
-        opacity: 0,
-        y: -12,
-        pointerEvents: 'none',
-        transition: { duration: 0.62, ease: SOFT_EXIT_EASE },
+      initial="hidden"
+      animate="visible"
+      exit="exit"
+      variants={{
+        hidden: { opacity: 1 },
+        visible: {
+          opacity: 1,
+          transition: { duration: 0.01 },
+        },
+        exit: {
+          opacity: 1,
+          pointerEvents: 'none',
+          transition: { duration: 0.72, ease: SOFT_EXIT_EASE },
+        },
       }}
       aria-label="Shop BOCA Water"
       onWheel={(e) => e.stopPropagation()}
@@ -133,6 +138,8 @@ export function ShopView({
           {ALL_SHOP_ITEMS.map((item, idx) => {
             const isSelected = item.id === selectedPack;
             const isHovered = item.id === localHover;
+            const colEnterDelay = enterDelay + 0.18 + idx * 0.28;
+            const colExitDelay = (ALL_SHOP_ITEMS.length - 1 - idx) * 0.14;
             return (
               <div
                 key={item.id}
@@ -151,21 +158,47 @@ export function ShopView({
                   className="pointer-events-none h-[264px] w-full shrink-0 md:h-[268px]"
                 />
 
-                <h2 className="mt-5 font-editorial text-[30px] sm:text-[32px] font-normal leading-[34px] tracking-[-0.02em] text-[var(--fg)]">
-                  {item.title}
-                </h2>
-                <p className="mt-1.5 font-ui text-[15px] font-semibold leading-[22px] text-[var(--fg-soft)] tabular-nums">
-                  {formatCurrency(item.priceCents)}
-                </p>
+                {/* Staggered caption choreography synced 1:1 with Single -> Six-Pack -> Case 3D build & reverse fade-out */}
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 14 },
+                    visible: {
+                      opacity: 1,
+                      y: 0,
+                      transition: {
+                        duration: 0.72,
+                        delay: colEnterDelay,
+                        ease: SOFT_ENTER_EASE,
+                      },
+                    },
+                    exit: {
+                      opacity: 0,
+                      y: -8,
+                      transition: {
+                        duration: 0.42,
+                        delay: colExitDelay,
+                        ease: SOFT_EXIT_EASE,
+                      },
+                    },
+                  }}
+                  className="flex flex-col items-center"
+                >
+                  <h2 className="mt-5 font-editorial text-[30px] sm:text-[32px] font-normal leading-[34px] tracking-[-0.02em] text-[var(--fg)]">
+                    {item.title}
+                  </h2>
+                  <p className="mt-1.5 font-ui text-[15px] font-semibold leading-[22px] text-[var(--fg-soft)] tabular-nums">
+                    {formatCurrency(item.priceCents)}
+                  </p>
 
-                <div className="mt-2.5">
-                  <WaterButton
-                    label="Buy Now"
-                    size="shop"
-                    active={isSelected || isHovered}
-                    onClick={() => handleCheckout(item.id)}
-                  />
-                </div>
+                  <div className="mt-2.5">
+                    <WaterButton
+                      label="Buy Now"
+                      size="shop"
+                      active={isSelected || isHovered}
+                      onClick={() => handleCheckout(item.id)}
+                    />
+                  </div>
+                </motion.div>
 
                 {/* Quiet mobile scroll indicator on Slides 1 & 2 */}
                 {idx < ALL_SHOP_ITEMS.length - 1 && (

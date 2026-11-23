@@ -909,7 +909,7 @@ export function createBottleAssembly(
     }
   };
 
-  let goldWordmarkEnabled = true;
+  let goldWordmarkEnabled = false;
   const goldLightCol = new THREE.Color('#ffe566');
   const goldDarkCol = new THREE.Color('#ffea7a');
   const goldBaseCol = new THREE.Color('#ffe566');
@@ -1395,33 +1395,74 @@ export function createShopTrioShowcase(hero: BottleAssembly): ShopTrioShowcase {
     depthWrite: false,
   });
 
-  const buildCanClone = () => {
+  // Per-column cloned materials so Single, Six-Pack, and Case can each fade opacity
+  // smoothly 0 <-> 1 independently on enter & reverse fade-out exit without affecting the hero bottle!
+  interface ShopColumnMaterials {
+    pet: THREE.MeshPhysicalMaterial;
+    rim: THREE.ShaderMaterial;
+    lid: THREE.MeshPhysicalMaterial;
+    meniscus: THREE.MeshBasicMaterial;
+    frontSticker: THREE.MeshPhysicalMaterial;
+    backSticker: THREE.MeshPhysicalMaterial;
+    basePetOpacity: number;
+    baseLidOpacity: number;
+    baseMeniscusOpacity: number;
+  }
+
+  const createColumnMaterials = (): ShopColumnMaterials => {
+    const pet = shopPetMaterial.clone();
+    const rim = res.fresnelRimMaterial.clone();
+    const lid = res.clearLidMaterial.clone();
+    lid.transparent = true;
+    const meniscus = miniMeniscusMat.clone();
+    const frontSticker = res.wordmarkMaterial.clone();
+    const backSticker = res.wordmarkBackMaterial.clone();
+    return {
+      pet,
+      rim,
+      lid,
+      meniscus,
+      frontSticker,
+      backSticker,
+      basePetOpacity: shopPetMaterial.opacity,
+      baseLidOpacity: res.clearLidMaterial.opacity,
+      baseMeniscusOpacity: miniMeniscusMat.opacity,
+    };
+  };
+
+  const colMats: [ShopColumnMaterials, ShopColumnMaterials, ShopColumnMaterials] = [
+    createColumnMaterials(),
+    createColumnMaterials(),
+    createColumnMaterials(),
+  ];
+
+  const buildCanClone = (mats: ShopColumnMaterials) => {
     const can = new THREE.Group();
-    const outer = new THREE.Mesh(shopOuterGeo, shopPetMaterial);
+    const outer = new THREE.Mesh(shopOuterGeo, mats.pet);
     outer.renderOrder = 3;
     can.add(outer);
 
-    const rim = new THREE.Mesh(shopOuterGeo, res.fresnelRimMaterial);
+    const rim = new THREE.Mesh(shopOuterGeo, mats.rim);
     rim.scale.setScalar(1.0012);
     rim.renderOrder = 4;
     can.add(rim);
 
-    const lid = new THREE.Mesh(shopLidGeo, res.clearLidMaterial);
+    const lid = new THREE.Mesh(shopLidGeo, mats.lid);
     lid.renderOrder = 4;
     can.add(lid);
 
-    const meniscus = new THREE.Mesh(miniMeniscusGeo, miniMeniscusMat);
+    const meniscus = new THREE.Mesh(miniMeniscusGeo, mats.meniscus);
     meniscus.position.y = baseY + H * res.waterFillLevel;
     meniscus.renderOrder = 2;
     can.add(meniscus);
 
-    const frontSticker = new THREE.Mesh(res.wordmarkGeo, res.wordmarkMaterial);
+    const frontSticker = new THREE.Mesh(res.wordmarkGeo, mats.frontSticker);
     frontSticker.position.y = BOTTLE_WORDMARK_MESH_CONFIG.yOffset;
     frontSticker.rotation.y = BOTTLE_WORDMARK_MESH_CONFIG.yawOffsets[0];
     frontSticker.renderOrder = 6;
     can.add(frontSticker);
 
-    const backSticker = new THREE.Mesh(res.wordmarkGeo, res.wordmarkBackMaterial);
+    const backSticker = new THREE.Mesh(res.wordmarkGeo, mats.backSticker);
     backSticker.position.y = BOTTLE_WORDMARK_MESH_CONFIG.yOffset;
     backSticker.rotation.y = BOTTLE_WORDMARK_MESH_CONFIG.yawOffsets[1];
     backSticker.renderOrder = 6;
@@ -1430,38 +1471,40 @@ export function createShopTrioShowcase(hero: BottleAssembly): ShopTrioShowcase {
     return can;
   };
 
-  // Column 1 (Left, x = -2.55): Signature crystal-clear Single can with pure-white seamed lid
+  // Column 1 (Left): Signature crystal-clear Single can with pure-white seamed lid
   const col1 = new THREE.Group();
   col1.name = 'ShopCol1_Single';
   col1.position.set(-2.55, 0.48, 0);
   col1.scale.setScalar(0.68);
-  col1.add(buildCanClone());
+  col1.add(buildCanClone(colMats[0]));
   group.add(col1);
 
-  // Column 2 (Center, x = 0.0): 6-Pack sculptural 2x3 cluster
+  // Column 2 (Center): 6-Pack sculptural 2x3 cluster
   const col2 = new THREE.Group();
   col2.name = 'ShopCol2_SixPack';
   col2.position.set(0.0, 0.48, 0);
   col2.scale.setScalar(0.46);
-  const sixPackCans: Array<{ can: THREE.Group; nx: number; nz: number }> = [];
+  const sixPackCans: Array<{ can: THREE.Group; nx: number; nz: number; order: number }> = [];
   for (let i = 0; i < 6; i++) {
     const col = i % 3;
     const row = Math.floor(i / 3);
     const nx = col - 1;
     const nz = row - 0.5;
-    const can = buildCanClone();
+    const can = buildCanClone(colMats[1]);
     can.position.set(nx * 0.90, 0, nz * 0.90);
     col2.add(can);
-    sixPackCans.push({ can, nx, nz });
+    // Build front-row left-to-right, then back-row left-to-right
+    const order = (row === 1 ? 0 : 3) + col;
+    sixPackCans.push({ can, nx, nz, order });
   }
   group.add(col2);
 
-  // Column 3 (Right, x = +2.55): 24-Pack 2-tier 4x3 architectural stack
+  // Column 3 (Right): 24-Pack 2-tier 4x3 architectural stack
   const col3 = new THREE.Group();
   col3.name = 'ShopCol3_Case24';
   col3.position.set(2.55, 0.48, 0);
   col3.scale.setScalar(0.28);
-  const case24Cans: Array<{ can: THREE.Group; nx: number; nz: number; tier: number }> = [];
+  const case24Cans: Array<{ can: THREE.Group; nx: number; nz: number; tier: number; order: number }> = [];
   for (let i = 0; i < 24; i++) {
     const tier = Math.floor(i / 12);
     const ti = i % 12;
@@ -1469,24 +1512,37 @@ export function createShopTrioShowcase(hero: BottleAssembly): ShopTrioShowcase {
     const row = Math.floor(ti / 4);
     const nx = col - 1.5;
     const nz = row - 1;
-    const can = buildCanClone();
+    const can = buildCanClone(colMats[2]);
     can.position.set(
       nx * 0.90,
       tier === 0 ? -H * 0.502 : H * 0.502,
       nz * 0.90
     );
     col3.add(can);
-    case24Cans.push({ can, nx, nz, tier });
+    // Bottom tier builds outward first (0..11), then top tier builds atop it (12..23)
+    const order = tier * 12 + (2 - row) * 4 + col;
+    case24Cans.push({ can, nx, nz, tier, order });
   }
   group.add(col3);
 
-  let visibilityBlend = 0;
+  // Unified timeline: 0 -> 1 over 1.35s on enter (after 0.24s hero clearance: Single -> Six-Pack -> Case),
+  // 1 -> 0 over 0.72s on leave (reverse Case -> Six-Pack -> Single fade-out before hero glides back)
+  let shopTimeline = 0;
+  let shopEnterDelayTimer = 0;
+  let wasShopActive = false;
+  let isExitingShop = false;
   let hover1 = 0;
   let hover6 = 0;
   let hover24 = 0;
 
-  // Cached DOM slot references + pre-allocated ray unprojection scratch vector (0 allocs/frame)
+  // Cached DOM slot references + last known world positions so reverse fade-out stays rock-solid
+  // even after ShopView DOM begins unmounting!
   const slotCache: Partial<Record<ShopItemId, HTMLElement | null>> = {};
+  const lastSlotWorld: Array<{ x: number; y: number; h: number; valid: boolean }> = [
+    { x: -2.2, y: -0.1, h: 1.6, valid: false },
+    { x: 0.0, y: -0.1, h: 1.6, valid: false },
+    { x: 2.2, y: -0.1, h: 1.6, valid: false },
+  ];
   const unprojVec = new THREE.Vector3();
   // True sculptural scale hierarchy:
   // Single (petite focused solo can, 44% smaller than before) -> Six-Pack (medium 2x3 cluster) -> Case (commanding 2-tier 24-can stack),
@@ -1512,6 +1568,60 @@ export function createShopTrioShowcase(hero: BottleAssembly): ShopTrioShowcase {
     return found;
   };
 
+  const smooth01 = (e0: number, e1: number, x: number): number => {
+    const t = THREE.MathUtils.clamp((x - e0) / Math.max(1e-5, e1 - e0), 0, 1);
+    return t * t * (3 - 2 * t);
+  };
+  const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
+
+  // Track per-can live build scale so an early exit never pops unbuilt cans to 1.0
+  const sixPackScales = new Float32Array(sixPackCans.length);
+  const case24Scales = new Float32Array(case24Cans.length);
+
+  const syncColumnMaterials = (mats: ShopColumnMaterials, alpha: number) => {
+    const a = THREE.MathUtils.clamp(alpha, 0, 1);
+    mats.pet.opacity = mats.basePetOpacity * a;
+    mats.meniscus.opacity = mats.baseMeniscusOpacity * a;
+
+    // Sync Fresnel rim theme & modulate strength smoothly with column alpha
+    mats.rim.uniforms.uRimColor.value.copy(res.fresnelRimMaterial.uniforms.uRimColor.value);
+    mats.rim.uniforms.uRimPower.value = res.fresnelRimMaterial.uniforms.uRimPower.value;
+    mats.rim.uniforms.uRimStrength.value =
+      res.fresnelRimMaterial.uniforms.uRimStrength.value * a;
+    if (mats.rim.blending !== res.fresnelRimMaterial.blending) {
+      mats.rim.blending = res.fresnelRimMaterial.blending;
+      mats.rim.needsUpdate = true;
+    }
+
+    // Sync architectural white lid & allow smooth alpha fade without z-buffer holes
+    mats.lid.color.copy(res.clearLidMaterial.color);
+    mats.lid.opacity = mats.baseLidOpacity * a;
+    mats.lid.depthWrite = a > 0.92;
+
+    // Sync BOCA (front) & WATER (back) wordmarks with live hero light/dark state
+    mats.frontSticker.map = res.wordmarkMaterial.map;
+    mats.frontSticker.emissiveMap = res.wordmarkMaterial.emissiveMap;
+    mats.frontSticker.color.copy(res.wordmarkMaterial.color);
+    mats.frontSticker.emissive.copy(res.wordmarkMaterial.emissive);
+    mats.frontSticker.emissiveIntensity = res.wordmarkMaterial.emissiveIntensity;
+    mats.frontSticker.roughness = res.wordmarkMaterial.roughness;
+    mats.frontSticker.metalness = res.wordmarkMaterial.metalness;
+    mats.frontSticker.clearcoat = res.wordmarkMaterial.clearcoat;
+    mats.frontSticker.envMapIntensity = res.wordmarkMaterial.envMapIntensity;
+    mats.frontSticker.opacity = res.wordmarkMaterial.opacity * a;
+
+    mats.backSticker.map = res.wordmarkBackMaterial.map;
+    mats.backSticker.emissiveMap = res.wordmarkBackMaterial.emissiveMap;
+    mats.backSticker.color.copy(res.wordmarkBackMaterial.color);
+    mats.backSticker.emissive.copy(res.wordmarkBackMaterial.emissive);
+    mats.backSticker.emissiveIntensity = res.wordmarkBackMaterial.emissiveIntensity;
+    mats.backSticker.roughness = res.wordmarkBackMaterial.roughness;
+    mats.backSticker.metalness = res.wordmarkBackMaterial.metalness;
+    mats.backSticker.clearcoat = res.wordmarkBackMaterial.clearcoat;
+    mats.backSticker.envMapIntensity = res.wordmarkBackMaterial.envMapIntensity;
+    mats.backSticker.opacity = res.wordmarkBackMaterial.opacity * a;
+  };
+
   const update = (
     time: number,
     dt: number,
@@ -1526,21 +1636,39 @@ export function createShopTrioShowcase(hero: BottleAssembly): ShopTrioShowcase {
   ) => {
     void _shopScrollProgress;
     const clampedDt = Math.min(Math.max(dt, 0.001), 0.045);
-    const target = active ? 1 : 0;
-    // Soft, drawn-out entrance & dissolve when transitioning to/from Shop
-    const speed = active ? 2.8 : 3.4;
-    visibilityBlend = THREE.MathUtils.lerp(
-      visibilityBlend,
-      target,
-      1 - Math.exp(-clampedDt * speed)
-    );
 
-    if (visibilityBlend < 0.015) {
+    if (active && !wasShopActive) {
+      isExitingShop = false;
+      if (shopTimeline < 0.02) {
+        shopEnterDelayTimer = 0.24;
+        sixPackScales.fill(0);
+        case24Scales.fill(0);
+        for (let i = 0; i < lastSlotWorld.length; i++) {
+          lastSlotWorld[i].valid = false;
+        }
+      }
+    } else if (!active && wasShopActive) {
+      isExitingShop = true;
+      shopEnterDelayTimer = 0;
+    }
+    wasShopActive = active;
+
+    if (active) {
+      if (shopEnterDelayTimer > 0) {
+        shopEnterDelayTimer = Math.max(0, shopEnterDelayTimer - clampedDt);
+      } else {
+        // Silky 1.35s sequential build-out: Single -> Six-Pack (cans 1..6) -> Case (tiers 1..24)
+        shopTimeline = Math.min(1, shopTimeline + clampedDt / 1.35);
+      }
+    } else {
+      // Graceful 0.72s reverse fade-out: Case -> Six-Pack -> Single
+      shopTimeline = Math.max(0, shopTimeline - clampedDt / 0.72);
+    }
+
+    if (shopTimeline <= 0.001) {
       group.visible = false;
       return;
     }
-
-    const easedBlend = visibilityBlend * visibilityBlend * (3 - 2 * visibilityBlend);
 
     group.visible = true;
     group.position.set(0, 0, 0);
@@ -1558,6 +1686,57 @@ export function createShopTrioShowcase(hero: BottleAssembly): ShopTrioShowcase {
       '24-pack': hover24,
     };
 
+    // Per-column opacity, scale multiplier, and vertical glide for Enter vs Reverse Exit
+    let colAlphas: [number, number, number];
+    let colScaleMults: [number, number, number];
+    let colLiftYs: [number, number, number];
+
+    if (!isExitingShop) {
+      const p0 = smooth01(0.0, 0.34, shopTimeline);
+      const e0 = easeOutCubic(p0);
+      const p1 = smooth01(0.22, 0.68, shopTimeline);
+      const e1 = easeOutCubic(p1);
+      const p2 = smooth01(0.46, 1.0, shopTimeline);
+      const e2 = easeOutCubic(p2);
+
+      colAlphas = [
+        p0,
+        smooth01(0.20, 0.38, shopTimeline),
+        smooth01(0.44, 0.60, shopTimeline),
+      ];
+      colScaleMults = [
+        THREE.MathUtils.lerp(0.52, 1.0, e0),
+        1.0,
+        1.0,
+      ];
+      colLiftYs = [
+        (1 - e0) * -0.22,
+        (1 - e1) * -0.10,
+        (1 - e2) * -0.08,
+      ];
+    } else {
+      // Reverse sequential fade-out: Case first (1.0 -> 0.56), Six-Pack second (0.72 -> 0.28), Single last (0.44 -> 0.0)
+      const a2 = smooth01(0.56, 0.98, shopTimeline);
+      const a1 = smooth01(0.28, 0.72, shopTimeline);
+      const a0 = smooth01(0.0, 0.44, shopTimeline);
+
+      colAlphas = [a0, a1, a2];
+      colScaleMults = [
+        THREE.MathUtils.lerp(0.90, 1.0, a0),
+        THREE.MathUtils.lerp(0.90, 1.0, a1),
+        THREE.MathUtils.lerp(0.90, 1.0, a2),
+      ];
+      colLiftYs = [
+        (1 - a0) * -0.14,
+        (1 - a1) * -0.14,
+        (1 - a2) * -0.14,
+      ];
+    }
+
+    for (let i = 0; i < 3; i++) {
+      syncColumnMaterials(colMats[i], colAlphas[i]);
+    }
+
     const px = scroll.pointerX;
     const py = scroll.pointerY;
 
@@ -1565,52 +1744,84 @@ export function createShopTrioShowcase(hero: BottleAssembly): ShopTrioShowcase {
       camera.updateMatrixWorld();
       const camZ = Math.max(0.5, Math.abs(camera.position.z));
       const visibleH = 2 * camZ * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
-      const enterScale = 0.86 + easedBlend * 0.14;
-      const enterLiftY = (1 - easedBlend) * -0.42;
 
       for (let i = 0; i < itemEntries.length; i++) {
         const entry = itemEntries[i];
-        const slotEl = getSlotEl(entry.id);
-        if (!slotEl) {
+        const colAlpha = colAlphas[i];
+        if (colAlpha <= 0.008) {
           entry.obj.visible = false;
           continue;
         }
-        const rect = slotEl.getBoundingClientRect();
-        if (
-          rect.width < 1 ||
-          rect.height < 1 ||
-          rect.bottom < -120 ||
-          rect.top > viewportH + 120
-        ) {
-          entry.obj.visible = false;
-          continue;
+
+        const slotEl = getSlotEl(entry.id);
+        let worldX = lastSlotWorld[i].x;
+        let worldY = lastSlotWorld[i].y;
+        let slotWorldH = lastSlotWorld[i].h;
+        let hasPos = false;
+
+        if (slotEl) {
+          const rect = slotEl.getBoundingClientRect();
+          if (
+            rect.width >= 1 &&
+            rect.height >= 1 &&
+            rect.bottom >= -120 &&
+            rect.top <= viewportH + 120
+          ) {
+            const cx = rect.left + rect.width * 0.5;
+            const cy = rect.top + rect.height * 0.5;
+            const ndcX = (cx / viewportW) * 2 - 1;
+            const ndcY = -((cy / viewportH) * 2 - 1);
+
+            // Exact 1:1 ray-to-z=0 plane intersection: ZERO scroll lag, pixel-locked to DOM slot
+            unprojVec.set(ndcX, ndcY, 0.5).unproject(camera).sub(camera.position).normalize();
+            const rayT = -camera.position.z / (Math.abs(unprojVec.z) > 1e-5 ? unprojVec.z : -1);
+            worldX = camera.position.x + unprojVec.x * rayT;
+            worldY = camera.position.y + unprojVec.y * rayT;
+            slotWorldH = (rect.height / viewportH) * visibleH;
+
+            // Keep cached world slot updated while Shop is active (freeze on exit so fade-out stays rock-solid!)
+            if (!isExitingShop) {
+              lastSlotWorld[i].x = worldX;
+              lastSlotWorld[i].y = worldY;
+              lastSlotWorld[i].h = slotWorldH;
+              lastSlotWorld[i].valid = true;
+            }
+            hasPos = true;
+          }
+        }
+
+        if (!hasPos) {
+          if (isExitingShop && lastSlotWorld[i].valid) {
+            worldX = lastSlotWorld[i].x;
+            worldY = lastSlotWorld[i].y;
+            slotWorldH = lastSlotWorld[i].h;
+            hasPos = true;
+          } else {
+            entry.obj.visible = false;
+            continue;
+          }
+        }
+
+        // During exit, prefer cached resting slot position so ShopView's y-drift never drags 3D cans
+        if (isExitingShop && lastSlotWorld[i].valid) {
+          worldX = lastSlotWorld[i].x;
+          worldY = lastSlotWorld[i].y;
+          slotWorldH = lastSlotWorld[i].h;
         }
 
         entry.obj.visible = true;
-        const cx = rect.left + rect.width * 0.5;
-        const cy = rect.top + rect.height * 0.5;
-        const ndcX = (cx / viewportW) * 2 - 1;
-        const ndcY = -((cy / viewportH) * 2 - 1);
-
-        // Exact 1:1 ray-to-z=0 plane intersection: ZERO scroll lag, pixel-locked to DOM slot
-        unprojVec.set(ndcX, ndcY, 0.5).unproject(camera).sub(camera.position).normalize();
-        const rayT = -camera.position.z / (Math.abs(unprojVec.z) > 1e-5 ? unprojVec.z : -1);
-        const worldX = camera.position.x + unprojVec.x * rayT;
-        const worldY = camera.position.y + unprojVec.y * rayT;
-
         const hVal = hoverById[entry.id] ?? 0;
-        const slotWorldH = (rect.height / viewportH) * visibleH;
         const idleBreathY = Math.sin(time * 0.85 + i * 0.9) * 0.014;
         const baselineY = isMobilePortrait ? 0 : slotWorldH * entry.yBaselineFrac;
         const activeRatio = isMobilePortrait ? entry.mobileHeightRatio : entry.heightRatio;
 
         entry.obj.position.set(
           worldX,
-          worldY + baselineY + enterLiftY + idleBreathY + hVal * 0.055,
+          worldY + baselineY + colLiftYs[i] + idleBreathY + hVal * 0.055,
           0
         );
         entry.obj.scale.setScalar(
-          slotWorldH * activeRatio * enterScale * (1 + hVal * 0.065)
+          slotWorldH * activeRatio * colScaleMults[i] * (1 + hVal * 0.065)
         );
       }
     }
@@ -1629,7 +1840,24 @@ export function createShopTrioShowcase(hero: BottleAssembly): ShopTrioShowcase {
     const s6 = THREE.MathUtils.lerp(0.90, 1.12, hover6);
     for (let i = 0; i < sixPackCans.length; i++) {
       const item = sixPackCans[i];
-      item.can.position.set(item.nx * s6, hover6 * (item.nz > 0 ? -0.05 : 0.05), item.nz * s6);
+      let canS = sixPackScales[i];
+      if (!isExitingShop) {
+        const t0 = 0.22 + item.order * 0.056;
+        canS = easeOutCubic(smooth01(t0, t0 + 0.18, shopTimeline));
+        sixPackScales[i] = canS;
+      }
+      if (canS <= 0.01) {
+        item.can.visible = false;
+        continue;
+      }
+      item.can.visible = true;
+      item.can.scale.setScalar(canS);
+      const spread6 = THREE.MathUtils.lerp(0.45, s6, canS);
+      item.can.position.set(
+        item.nx * spread6,
+        (1 - canS) * -0.26 + hover6 * (item.nz > 0 ? -0.05 : 0.05),
+        item.nz * spread6
+      );
       item.can.rotation.set(item.nz * hover6 * 0.10, 0, -item.nx * hover6 * 0.08);
     }
 
@@ -1642,10 +1870,26 @@ export function createShopTrioShowcase(hero: BottleAssembly): ShopTrioShowcase {
     const tierGap = THREE.MathUtils.lerp(H * 0.502, H * 0.56, hover24);
     for (let i = 0; i < case24Cans.length; i++) {
       const item = case24Cans[i];
+      let canS = case24Scales[i];
+      if (!isExitingShop) {
+        const idxInTier = item.order % 12;
+        const t0 = item.tier === 0 ? 0.46 + idxInTier * 0.018 : 0.68 + idxInTier * 0.016;
+        canS = easeOutCubic(smooth01(t0, t0 + 0.14, shopTimeline));
+        case24Scales[i] = canS;
+      }
+      if (canS <= 0.01) {
+        item.can.visible = false;
+        continue;
+      }
+      item.can.visible = true;
+      item.can.scale.setScalar(canS);
+      const spread24 = THREE.MathUtils.lerp(0.62, s24, canS);
+      const baseTierY = item.tier === 0 ? -tierGap : tierGap;
+      const tierLift = item.tier === 0 ? (1 - canS) * -0.22 : (1 - canS) * 0.24;
       item.can.position.set(
-        item.nx * s24,
-        item.tier === 0 ? -tierGap : tierGap,
-        item.nz * s24
+        item.nx * spread24,
+        baseTierY + tierLift,
+        item.nz * spread24
       );
       item.can.rotation.set(item.nz * hover24 * 0.05, 0, -item.nx * hover24 * 0.04);
     }
@@ -1666,6 +1910,14 @@ export function createShopTrioShowcase(hero: BottleAssembly): ShopTrioShowcase {
     shopPetMaterial.dispose();
     miniMeniscusGeo.dispose();
     miniMeniscusMat.dispose();
+    for (let i = 0; i < colMats.length; i++) {
+      colMats[i].pet.dispose();
+      colMats[i].rim.dispose();
+      colMats[i].lid.dispose();
+      colMats[i].meniscus.dispose();
+      colMats[i].frontSticker.dispose();
+      colMats[i].backSticker.dispose();
+    }
   };
 
   return {

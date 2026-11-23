@@ -132,11 +132,12 @@ export function WaterButton({
     onClick();
   };
 
-  // Exact ~30% reduction from previous 32/42px (hero) and 26/31px (shop), normal case
+  // Hero buttons (Continue / Back): 20% smaller (18px / 23px), refined medium gray;
+  // Shop buttons (Buy Now): crisp 18px / 21px primary ink.
   const sizeClass =
     size === 'shop'
-      ? 'text-[18px] sm:text-[21px] leading-[1.12] tracking-[0.005em]'
-      : 'text-[22px] sm:text-[29px] leading-[1.08] tracking-[-0.005em]';
+      ? 'text-[18px] sm:text-[21px] leading-[1.12] tracking-[0.005em] text-[var(--fg)] group-hover:opacity-68'
+      : 'text-[18px] sm:text-[23px] leading-[1.08] tracking-[-0.005em] text-[var(--fg-btn-muted)] group-hover:text-[var(--fg)]';
 
   return (
     <button
@@ -189,7 +190,7 @@ export function WaterButton({
 
       <span
         ref={spanRef}
-        className={`inline-block font-editorial font-normal text-[var(--fg)] transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:opacity-68 group-active:scale-[0.97] ${sizeClass}`}
+        className={`inline-block font-editorial font-normal transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-active:scale-[0.97] ${sizeClass}`}
       >
         {label}
       </span>
