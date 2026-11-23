@@ -42,10 +42,10 @@ export const WORDMARK_CASES: readonly WordmarkCaseOption[] = [
 export const BOTTLE_WORDMARK_CONFIG = {
   /** Base wordmark copy (default: uppercase "BOCA") */
   text: 'BOCA',
-  /** Two-sided full-height vertical copy: front (0 deg) = "BOCA", back (180 deg) = "water" */
+  /** Two-sided full-height vertical copy: front (0 deg) = "BOCA", back (180 deg) = "WATER" */
   sides: {
     front: { text: 'BOCA', textCase: 'upper' as WordmarkCase },
-    back: { text: 'water', textCase: 'lower' as WordmarkCase },
+    back: { text: 'WATER', textCase: 'upper' as WordmarkCase },
   },
   /** Reading direction along the can spine: 'up' reads bottom-to-top (-90deg) */
   direction: 'up' as 'up' | 'down',
@@ -71,6 +71,10 @@ export const BOTTLE_WORDMARK_CONFIG = {
     BO: -0.018,
     OC: -0.014,
     CA: -0.022,
+    WA: -0.052,
+    AT: -0.044,
+    TE: -0.016,
+    ER: -0.014,
     Bo: -0.018,
     oc: -0.01,
     ca: -0.008,
@@ -82,8 +86,13 @@ export const BOTTLE_WORDMARK_CONFIG = {
   } as Record<string, number>,
   /** Vertical offset along the can spine in canvas px (+ moves up toward rim, - moves down toward base) */
   verticalOffsetY: 0,
-  /** Crisp matte-satin die-cut white ink for clear PET */
+  /** Crisp matte-satin die-cut white ink for clear PET (dark mode default) */
   color: 'rgba(250, 251, 252, 0.98)',
+  /** Theme-calibrated matte-satin sticker inks (Dark = crisp white, Light = deep Orka charcoal) */
+  colors: {
+    dark: 'rgba(250, 251, 252, 0.98)',
+    light: 'rgba(17, 17, 19, 0.94)',
+  },
   /** Global alpha multiplier (0..1) */
   opacity: 1,
   /** Optional micro-frost halo (disabled by default for razor-sharp matte-satin die-cut edges) */
@@ -350,7 +359,7 @@ export const renderWordmarkForBottleScene = renderWordmarkCanvas;
 /**
  * Renders the full-height vertical texture for either side of the can:
  * - `'front'` (0 deg): uppercase `"BOCA"` bottom-to-top
- * - `'back'` (180 deg): lowercase `"water"` bottom-to-top
+ * - `'back'` (180 deg): uppercase `"WATER"` bottom-to-top
  *
  * Both sides auto-fit to `BOTTLE_WORDMARK_CONFIG.targetHeightCoverage` (90%)
  * with tight luxury editorial kerning and crisp matte-satin white ink.
@@ -358,7 +367,8 @@ export const renderWordmarkForBottleScene = renderWordmarkCanvas;
 export function renderWordmarkSideCanvas(
   side: WordmarkSide,
   fontFamily?: string,
-  existingCanvas?: HTMLCanvasElement
+  existingCanvas?: HTMLCanvasElement,
+  color?: string
 ): HTMLCanvasElement {
   const candidate = resolveSerifCandidate(fontFamily);
   const sideConfig = BOTTLE_WORDMARK_CONFIG.sides[side];
@@ -368,6 +378,7 @@ export function renderWordmarkSideCanvas(
       text: sideConfig.text,
       textCase: sideConfig.textCase,
       direction: BOTTLE_WORDMARK_CONFIG.direction,
+      ...(color !== undefined ? { color } : {}),
     },
     existingCanvas
   );
@@ -379,9 +390,10 @@ export function renderWordmarkSideCanvas(
 export async function renderWordmarkSideCanvasAsync(
   side: WordmarkSide,
   fontFamily?: string,
-  existingCanvas?: HTMLCanvasElement
+  existingCanvas?: HTMLCanvasElement,
+  color?: string
 ): Promise<HTMLCanvasElement> {
   const candidate = resolveSerifCandidate(fontFamily);
   await loadSerifFont(candidate.id);
-  return renderWordmarkSideCanvas(side, fontFamily, existingCanvas);
+  return renderWordmarkSideCanvas(side, fontFamily, existingCanvas, color);
 }

@@ -5,7 +5,7 @@
  * - Zero Material fonts (no Roboto, Google Sans, Product Sans, Noto).
  * - Default display serif: Instrument Serif (Vercel-ecosystem WDA standard on Google Fonts),
  *   with Vercel's native Geist Serif + 4 curated editorial serifs available for switching.
- * - Paired with Instrument Sans (UI/body) + Fragment Mono (tabular-nums pricing & pack counts).
+ * - Paired with Roboto (UI/body/nav/Shop — explicit user override) + Fragment Mono (tabular-nums).
  * - Bottle wordmark rendering & tight kerning config live in `./bottleWordmark.ts`
  *   (re-exported below for backwards compatibility).
  */
@@ -45,7 +45,7 @@ export const GOOGLE_FONTS_PRECONNECT_URLS = [
 ] as const;
 
 export const GOOGLE_FONTS_CSS2_URL =
-  'https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..600&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Fragment+Mono:ital@0;1&family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,400..600&family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Newsreader:ital,opsz,wght@0,6..72,400..600;1,6..72,400..500&display=swap';
+  'https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..600&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Fragment+Mono:ital@0;1&family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,400..600&family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Newsreader:ital,opsz,wght@0,6..72,400..600;1,6..72,400..500&family=Roboto:wght@400;500;700&display=swap';
 
 export const GEIST_SERIF_WOFF2_URL =
   'https://cdn.jsdelivr.net/npm/geist@latest/dist/fonts/geist-serif/GeistSerif-Regular.woff2';
@@ -166,7 +166,8 @@ export const FONT_CANDIDATES: readonly SerifFontCandidate[] = [
 export const TYPOGRAPHY_TOKENS = {
   defaultSerifId: DEFAULT_SERIF_ID,
   display: '"Instrument Serif", Georgia, serif',
-  sans: '"Instrument Sans", ui-sans-serif, system-ui, sans-serif',
+  sans: '"Roboto", ui-sans-serif, system-ui, sans-serif',
+  sansFamily: '"Roboto", ui-sans-serif, system-ui, sans-serif',
   mono: '"Fragment Mono", ui-monospace, SFMono-Regular, monospace',
 } as const;
 

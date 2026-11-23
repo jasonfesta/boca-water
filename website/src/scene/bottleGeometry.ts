@@ -6,11 +6,13 @@ import {
   formatWordmarkText,
   type BottleWordmarkPart,
 } from './bottleWordmarkMesh';
+import { createShopMerchTrio } from './merchGeometry';
 import {
   DEFAULT_BOTTLE_TUNE_PARAMS,
   type BottleTuneParams,
   type PackMode,
   type ScrollState,
+  type ShopItemId,
   type WordmarkCase,
 } from './types';
 
@@ -61,14 +63,26 @@ export interface BottleAssembly {
     bodyRadius: number;
     innerRadius: number;
   };
-  /** Update the vertical wordmark textures (front 'BOCA' & back 'water') when font or case changes */
+  /** Update the vertical wordmark textures (front 'BOCA' & back 'WATER') when font, case, or theme changes */
   updateWordmark: (
     fontFamily: string,
     textCase?: WordmarkCase,
     externalCanvas?: HTMLCanvasElement | null,
     renderFn?: (fontFamily: string, textCase?: WordmarkCase) => HTMLCanvasElement,
-    renderSideFn?: (side: 'front' | 'back', fontFamily?: string) => HTMLCanvasElement
+    renderSideFn?: (
+      side: 'front' | 'back',
+      fontFamily?: string,
+      existingCanvas?: HTMLCanvasElement,
+      color?: string
+    ) => HTMLCanvasElement,
+    inkColor?: string
   ) => void;
+  /** Smoothly adapt PET edge contour, clear lid rim, and sticker glow for dark (1) vs light (0) mode */
+  setDarkMix: (darkMix: number) => void;
+  /** Toggle bright sparkling flat 24k gold finish on BOCA / WATER wordmark */
+  setGoldWordmark: (enabled: boolean, isDark: boolean) => void;
+  /** Advance animated gold micro-glitter shimmer time (seconds) */
+  setSparkleTime: (time: number) => void;
   /** Live-update physical PET tuning parameters */
   applyTuneParams: (params: Partial<BottleTuneParams>) => void;
   /** Dispose all geometries, materials, and procedural textures */
@@ -505,56 +519,49 @@ export function createBottleAssembly(
     depthWrite: false,
   });
 
-  // 3. Crystal-Clear PET / Acrylic Seamed Lid Material
-  // Optical transparent acrylic (no screen-space transmission artifacts on tight 90-deg
-  // countersink folds; lets the sparkling water & teardrop pocket shine right through
-  // while the rolled double-seam chime catches crisp studio speculars).
+  // 3. Solid Architectural White Seamed Lid & Pull-Tab Can Opener (#121)
+  // Sculpted solid white crown capping the crystal-clear PET cylinder with crisp bevel contrast.
   const clearLidMaterial = new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color('#eef6fc'),
-    transparent: true,
-    opacity: 0.22,
-    roughness: 0.06,
-    metalness: 0.04,
-    ior: params.capIor,
-    reflectivity: 0.9,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.045,
-    specularIntensity: 1.15,
+    color: new THREE.Color('#f2f3f5'),
+    transparent: false,
+    opacity: 1.0,
+    roughness: 0.24,
+    metalness: 0.06,
+    clearcoat: 0.45,
+    clearcoatRoughness: 0.20,
+    specularIntensity: 0.9,
     specularColor: new THREE.Color('#ffffff'),
-    envMapIntensity: 1.15,
+    envMapIntensity: 0.92,
     side: THREE.FrontSide,
-    depthWrite: false,
+    depthWrite: true,
   });
 
-  // Sculpted crystal-clear acrylic pull-tab material (clear glossy bevels, not frosted white)
+  // Solid architectural white pull-tab opener (slightly brighter & crisper bevel sheen)
   const clearPullTabMaterial = new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color('#e8f3fc'),
-    transparent: true,
-    opacity: 0.32,
-    roughness: 0.075,
-    metalness: 0.04,
-    ior: params.capIor,
-    reflectivity: 0.92,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.05,
-    envMapIntensity: 1.35,
+    color: new THREE.Color('#f6f7f9'),
+    transparent: false,
+    opacity: 1.0,
+    roughness: 0.20,
+    metalness: 0.08,
+    clearcoat: 0.55,
+    clearcoatRoughness: 0.16,
+    envMapIntensity: 1.05,
     side: THREE.FrontSide,
-    depthWrite: false,
+    depthWrite: true,
   });
 
-  // Delicate translucent detail material for clear rivet & flush scored drink aperture
+  // Solid architectural off-white rivet & scored drink-opening bead for real shadow relief
   const clearDetailMaterial = new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color('#e6f2fa'),
-    transparent: true,
-    opacity: 0.24,
-    roughness: 0.1,
-    metalness: 0.02,
-    ior: params.capIor,
-    clearcoat: 0.85,
-    clearcoatRoughness: 0.06,
-    envMapIntensity: 1.1,
+    color: new THREE.Color('#e4e7ec'),
+    transparent: false,
+    opacity: 1.0,
+    roughness: 0.28,
+    metalness: 0.08,
+    clearcoat: 0.35,
+    clearcoatRoughness: 0.24,
+    envMapIntensity: 0.85,
     side: THREE.FrontSide,
-    depthWrite: false,
+    depthWrite: true,
   });
 
   // Build Outer Sleek PET Can Shell (128 radial segments for zero faceting in top/bottom macro)
@@ -579,23 +586,59 @@ export function createBottleAssembly(
     normAttr.needsUpdate = true;
   }
   const petPuntMaterial = new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color('#eef5fb'),
+    color: new THREE.Color('#f4f9ff'),
     transparent: true,
-    opacity: 0.20,
-    roughness: 0.06,
+    opacity: 0.08,
+    roughness: 0.035,
     metalness: 0.02,
     ior: params.petIor,
-    reflectivity: 0.85,
-    clearcoat: 0.9,
-    clearcoatRoughness: 0.05,
-    envMapIntensity: 0.95,
-    side: THREE.DoubleSide,
+    reflectivity: 0.92,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.035,
+    envMapIntensity: 1.35,
+    side: THREE.FrontSide,
     depthWrite: false,
   });
   const puntDomeMesh = new THREE.Mesh(puntDomeGeo, petPuntMaterial);
   puntDomeMesh.name = 'PetBasePuntDome';
   puntDomeMesh.renderOrder = 3;
   group.add(puntDomeMesh);
+
+  // Subtle curved optical refraction sheen on the smooth molded PET punt dome
+  const puntRimMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color('#eef6ff') },
+    },
+    vertexShader: `
+      varying vec3 vN;
+      varying vec3 vV;
+      void main() {
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vN = normalize(normalMatrix * normal);
+        vV = normalize(-mv.xyz);
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      varying vec3 vN;
+      varying vec3 vV;
+      void main() {
+        float ndv = clamp(abs(dot(normalize(vN), normalize(vV))), 0.0, 1.0);
+        float rim = pow(1.0 - ndv, 3.0);
+        float alpha = clamp(rim * 0.34, 0.0, 0.36);
+        gl_FragColor = vec4(uColor, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+  const puntRimMesh = new THREE.Mesh(puntDomeGeo, puntRimMat);
+  puntRimMesh.name = 'PetBasePuntOpticalSheen';
+  puntRimMesh.renderOrder = 4;
+  group.add(puntRimMesh);
 
   // Dark-Field Bright-Rim Fresnel Optical Layer:
   // Reproduces classic dark-field studio bright-rim photography (razor-sharp white
@@ -711,12 +754,11 @@ export function createBottleAssembly(
         vec3 N = normalize(vN);
         vec3 V = normalize(vV);
         float ndv = clamp(abs(dot(N, V)), 0.0, 1.0);
-        float rim = pow(1.0 - ndv, 3.6);
+        // Subtle crisp bevel sheen on the solid white rolled seam chime
+        float rim = pow(1.0 - ndv, 4.6);
         vec3 L1 = normalize(vec3(0.55, 0.78, 0.35));
-        vec3 L2 = normalize(vec3(-0.65, 0.65, 0.25));
-        float spec = pow(max(dot(reflect(-L1, N), V), 0.0), 36.0) * 0.72
-                   + pow(max(dot(reflect(-L2, N), V), 0.0), 28.0) * 0.45;
-        float alpha = clamp(rim * 0.68 + spec, 0.0, 0.88);
+        float spec = pow(max(dot(reflect(-L1, N), V), 0.0), 42.0) * 0.22;
+        float alpha = clamp(rim * 0.22 + spec, 0.0, 0.32);
         gl_FragColor = vec4(uColor, alpha);
       }
     `,
@@ -762,15 +804,148 @@ export function createBottleAssembly(
     textCase: WordmarkCase = 'upper',
     externalCanvas?: HTMLCanvasElement | null,
     renderFn?: (fontFamily: string, textCase?: WordmarkCase) => HTMLCanvasElement,
-    renderSideFn?: (side: 'front' | 'back', fontFamily?: string) => HTMLCanvasElement
+    renderSideFn?: (
+      side: 'front' | 'back',
+      fontFamily?: string,
+      existingCanvas?: HTMLCanvasElement,
+      color?: string
+    ) => HTMLCanvasElement,
+    inkColor?: string
   ) => {
     wordmarkPart.updateTexture(
       fontFamily,
       textCase,
       externalCanvas,
       renderFn,
-      renderSideFn
+      renderSideFn,
+      inkColor
     );
+  };
+
+  const darkRimCol = new THREE.Color('#f6faff');
+  const lightRimCol = new THREE.Color('#27313c');
+  const darkLidCol = new THREE.Color('#f4f9ff');
+  const lightLidCol = new THREE.Color('#4a5664');
+  const darkPuntCol = new THREE.Color('#eef6ff');
+  const lightPuntCol = new THREE.Color('#3c4856');
+  const lidSolidDark = new THREE.Color('#f2f3f5');
+  const lidSolidLight = new THREE.Color('#e2e5ea');
+  const tabSolidDark = new THREE.Color('#f6f7f9');
+  const tabSolidLight = new THREE.Color('#eceff3');
+
+  const setDarkMix = (darkMix: number) => {
+    const m = THREE.MathUtils.clamp(darkMix, 0, 1);
+    const isLight = m < 0.5;
+
+    // Smoothly transition outer PET Fresnel edge from dark-field white glow -> crisp cool-graphite refractive contour
+    fresnelRimMaterial.uniforms.uRimColor.value.lerpColors(lightRimCol, darkRimCol, m);
+    fresnelRimMaterial.uniforms.uRimPower.value = THREE.MathUtils.lerp(3.4, 4.6, m);
+    fresnelRimMaterial.uniforms.uRimStrength.value = THREE.MathUtils.lerp(0.58, 1.24, m);
+    const desiredBlend = isLight ? THREE.NormalBlending : THREE.AdditiveBlending;
+    if (fresnelRimMaterial.blending !== desiredBlend) {
+      fresnelRimMaterial.blending = desiredBlend;
+      fresnelRimMaterial.needsUpdate = true;
+    }
+
+    // Adapt top seamed lid & pull-tab seal: gleaming luxury gold seal when goldWordmarkEnabled, crisp white otherwise
+    if (goldWordmarkEnabled) {
+      goldSealCol.lerpColors(goldSealLightCol, goldSealDarkCol, m);
+      clearLidMaterial.color.copy(goldSealCol);
+      clearLidMaterial.emissive.set('#f0be30');
+      clearLidMaterial.emissiveIntensity = THREE.MathUtils.lerp(0.34, 0.38, m);
+      clearLidMaterial.metalness = 0.55;
+      clearLidMaterial.roughness = 0.18;
+      clearLidMaterial.clearcoat = 0.85;
+      clearLidMaterial.clearcoatRoughness = 0.08;
+      clearLidMaterial.envMapIntensity = THREE.MathUtils.lerp(1.85, 2.1, m);
+
+      clearPullTabMaterial.color.copy(goldSealCol);
+      clearPullTabMaterial.emissive.set('#f0be30');
+      clearPullTabMaterial.emissiveIntensity = THREE.MathUtils.lerp(0.34, 0.38, m);
+      clearPullTabMaterial.metalness = 0.55;
+      clearPullTabMaterial.roughness = 0.18;
+      clearPullTabMaterial.clearcoat = 0.85;
+      clearPullTabMaterial.clearcoatRoughness = 0.08;
+      clearPullTabMaterial.envMapIntensity = THREE.MathUtils.lerp(1.85, 2.1, m);
+    } else {
+      clearLidMaterial.color.lerpColors(lidSolidLight, lidSolidDark, m);
+      clearLidMaterial.emissive.set('#000000');
+      clearLidMaterial.emissiveIntensity = 0;
+      clearLidMaterial.metalness = 0;
+      clearLidMaterial.roughness = 0.22;
+      clearLidMaterial.clearcoat = 0.45;
+      clearLidMaterial.clearcoatRoughness = 0.18;
+      clearLidMaterial.envMapIntensity = 1.05;
+
+      clearPullTabMaterial.color.lerpColors(tabSolidLight, tabSolidDark, m);
+      clearPullTabMaterial.emissive.set('#000000');
+      clearPullTabMaterial.emissiveIntensity = 0;
+      clearPullTabMaterial.metalness = 0;
+      clearPullTabMaterial.roughness = 0.24;
+      clearPullTabMaterial.clearcoat = 0.4;
+      clearPullTabMaterial.clearcoatRoughness = 0.2;
+      clearPullTabMaterial.envMapIntensity = 1.0;
+    }
+
+    // Adapt lid bevel sheen & base punt optical rim edges for dark vs warm gallery white
+    lidRimMaterial.uniforms.uColor.value.lerpColors(lightLidCol, darkLidCol, m);
+    if (lidRimMaterial.blending !== desiredBlend) {
+      lidRimMaterial.blending = desiredBlend;
+      lidRimMaterial.needsUpdate = true;
+    }
+
+    puntRimMat.uniforms.uColor.value.lerpColors(lightPuntCol, darkPuntCol, m);
+    if (puntRimMat.blending !== desiredBlend) {
+      puntRimMat.blending = desiredBlend;
+      puntRimMat.needsUpdate = true;
+    }
+
+    if (goldWordmarkEnabled) {
+      goldBaseCol.lerpColors(goldLightCol, goldDarkCol, m);
+      wordmarkPart.applyConfig({
+        color: `#${goldBaseCol.getHexString()}`,
+        emissiveColor: '#ffd038',
+        metalness: 0.24,
+        roughness: 0.24,
+        clearcoat: 0.48,
+        clearcoatRoughness: 0.12,
+        sheen: 0.0,
+        envMapIntensity: THREE.MathUtils.lerp(1.6, 1.85, m),
+        emissiveIntensity: THREE.MathUtils.lerp(0.62, 0.68, m),
+        sparkleMix: 1.0,
+      });
+    } else {
+      // Remove self-emissive glow in Light Mode so charcoal BOCA / WATER ink reads crisp and matte-satin
+      wordmarkPart.applyConfig({
+        color: '#ffffff',
+        emissiveColor: '#ffffff',
+        metalness: BOTTLE_WORDMARK_MESH_CONFIG.metalness,
+        roughness: BOTTLE_WORDMARK_MESH_CONFIG.roughness,
+        clearcoat: BOTTLE_WORDMARK_MESH_CONFIG.clearcoat,
+        clearcoatRoughness: BOTTLE_WORDMARK_MESH_CONFIG.clearcoatRoughness,
+        sheen: BOTTLE_WORDMARK_MESH_CONFIG.sheen,
+        envMapIntensity: BOTTLE_WORDMARK_MESH_CONFIG.envMapIntensity,
+        emissiveIntensity: BOTTLE_WORDMARK_MESH_CONFIG.emissiveIntensity * m,
+        sparkleMix: 0.0,
+      });
+    }
+  };
+
+  let goldWordmarkEnabled = true;
+  const goldLightCol = new THREE.Color('#ffe566');
+  const goldDarkCol = new THREE.Color('#ffea7a');
+  const goldBaseCol = new THREE.Color('#ffe566');
+  const goldSealLightCol = new THREE.Color('#ffe066');
+  const goldSealDarkCol = new THREE.Color('#ffe87c');
+  const goldSealCol = new THREE.Color('#ffe066');
+
+  const setGoldWordmark = (enabled: boolean, isDark: boolean) => {
+    goldWordmarkEnabled = enabled;
+    setDarkMix(isDark ? 1 : 0);
+  };
+
+  const setSparkleTime = (time: number) => {
+    wordmarkPart.setSparkleTime(time);
   };
 
   const applyTuneParams = (next: Partial<BottleTuneParams>) => {
@@ -812,6 +987,7 @@ export function createBottleAssembly(
 
     petOuterMaterial.dispose();
     petPuntMaterial.dispose();
+    puntRimMat.dispose();
     fresnelRimMaterial.dispose();
     petInnerMaterial.dispose();
     clearLidMaterial.dispose();
@@ -855,6 +1031,9 @@ export function createBottleAssembly(
       innerRadius: R - params.wallThickness,
     },
     updateWordmark,
+    setDarkMix,
+    setGoldWordmark,
+    setSparkleTime,
     applyTuneParams,
     dispose,
   };
@@ -1068,6 +1247,8 @@ export function createPackFormationManager(
   const targetPos = new THREE.Vector3();
   const targetRot = new THREE.Vector3();
 
+  let isSettledSolo = true;
+
   const update = (
     time: number,
     dt: number,
@@ -1075,7 +1256,11 @@ export function createPackFormationManager(
     packExpanded: boolean,
     scroll: ScrollState
   ) => {
+    if (packMode === '1-pack' && !packExpanded && isSettledSolo) {
+      return;
+    }
     const clampedDt = Math.min(Math.max(dt, 0.001), 0.04);
+    let anyActive = false;
 
     for (let i = 0; i < slots.length; i++) {
       const slot = slots[i];
@@ -1124,12 +1309,20 @@ export function createPackFormationManager(
         const visible = slot.scale > 0.015;
         slot.meshGroup.visible = visible;
         if (visible) {
+          anyActive = true;
           slot.meshGroup.position.copy(slot.pos);
           slot.meshGroup.rotation.set(slot.rot.x, slot.rot.y, slot.rot.z);
           slot.meshGroup.scale.setScalar(slot.scale);
         }
+      } else if (
+        slot.pos.lengthSq() > 1e-6 ||
+        slot.rot.lengthSq() > 1e-6 ||
+        slot.vel.lengthSq() > 1e-6
+      ) {
+        anyActive = true;
       }
     }
+    isSettledSolo = packMode === '1-pack' && !packExpanded && !anyActive;
   };
 
   const dispose = () => {
@@ -1142,6 +1335,466 @@ export function createPackFormationManager(
     heroOffset: slots[0].pos,
     heroRotOffset: slots[0].rot,
     update,
+    dispose,
+  };
+}
+
+export interface ShopTrioShowcase {
+  /** Root group holding all 6 real 3D Shop items (Row 1 water trio + Row 2 apparel trio) */
+  group: THREE.Group;
+  /** Frame-locked 1:1 DOM-slot unprojection, hover turn, and smooth view enter/exit */
+  update: (
+    time: number,
+    dt: number,
+    active: boolean,
+    scroll: ScrollState,
+    hoveredPack?: ShopItemId | null,
+    isMobilePortrait?: boolean,
+    shopScrollProgress?: number,
+    camera?: THREE.PerspectiveCamera,
+    viewportW?: number,
+    viewportH?: number
+  ) => void;
+  /** Live-update Row 2 apparel fabric, hardware & BOCA emblem materials for Light / Dark / Bright Sparkling Gold */
+  updateMerchMaterials: (isDark: boolean, isGold: boolean) => void;
+  /** Advance animated gold micro-glitter shimmer time on Holiday Single wordmark */
+  setSparkleTime: (time: number) => void;
+  /** Dispose lightweight extra geometry/material */
+  dispose: () => void;
+}
+
+/**
+ * Builds all 3 real 3D Shop formations simultaneously side-by-side in 3D space
+ * aligned to the 3 desktop Shop columns (Left: 1-Pack solo can, Center: 6-Pack
+ * 2x3 sculptural cluster, Right: 24-Pack 2-tier 4x3 architectural stack).
+ * Reuses hero.sharedResources for zero extra texture/shader overhead.
+ */
+export function createShopTrioShowcase(hero: BottleAssembly): ShopTrioShowcase {
+  const res = hero.sharedResources;
+  const H = res.bottleHeight;
+  const baseY = -H * 0.5;
+
+  const group = new THREE.Group();
+  group.name = 'BocaShopTrioShowcase';
+  group.visible = false;
+
+  // Lightweight 48-seg LOD geometries + zero-transmission clear PET material for the 31-can Shop Trio
+  // (eliminates 31 overlapping transmission render passes & cuts Shop triangle count ~65% for locked 60fps)
+  const shopParams: BottleTuneParams = {
+    ...DEFAULT_BOTTLE_TUNE_PARAMS,
+    bottleHeight: H,
+    bodyRadius: res.bodyRadius,
+    waterFillLevel: res.waterFillLevel,
+  };
+  const shopOuterGeo = new THREE.LatheGeometry(buildOuterCanProfile(shopParams), 48);
+  shopOuterGeo.computeVertexNormals();
+  const shopLidGeo = new THREE.LatheGeometry(buildClearCanLidProfile(shopParams), 48);
+  shopLidGeo.computeVertexNormals();
+  const shopPetMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0xffffff,
+    transmission: 0,
+    transparent: true,
+    opacity: 0.14,
+    roughness: 0.05,
+    metalness: 0.0,
+    ior: res.petOuterMaterial.ior,
+    clearcoat: 0.92,
+    clearcoatRoughness: 0.03,
+    specularIntensity: 1.2,
+    envMapIntensity: 1.25,
+    depthWrite: false,
+    side: THREE.FrontSide,
+  });
+
+  const miniMeniscusGeo = new THREE.TorusGeometry(
+    res.bodyRadius * 0.89,
+    0.0044,
+    8,
+    32
+  );
+  miniMeniscusGeo.rotateX(Math.PI / 2);
+  const miniMeniscusMat = new THREE.MeshBasicMaterial({
+    color: 0xd8e6f2,
+    transparent: true,
+    opacity: 0.42,
+    depthWrite: false,
+  });
+
+  const buildCanClone = () => {
+    const can = new THREE.Group();
+    const outer = new THREE.Mesh(shopOuterGeo, shopPetMaterial);
+    outer.renderOrder = 3;
+    can.add(outer);
+
+    const rim = new THREE.Mesh(shopOuterGeo, res.fresnelRimMaterial);
+    rim.scale.setScalar(1.0012);
+    rim.renderOrder = 4;
+    can.add(rim);
+
+    const lid = new THREE.Mesh(shopLidGeo, res.clearLidMaterial);
+    lid.renderOrder = 4;
+    can.add(lid);
+
+    const meniscus = new THREE.Mesh(miniMeniscusGeo, miniMeniscusMat);
+    meniscus.position.y = baseY + H * res.waterFillLevel;
+    meniscus.renderOrder = 2;
+    can.add(meniscus);
+
+    const frontSticker = new THREE.Mesh(res.wordmarkGeo, res.wordmarkMaterial);
+    frontSticker.position.y = BOTTLE_WORDMARK_MESH_CONFIG.yOffset;
+    frontSticker.rotation.y = BOTTLE_WORDMARK_MESH_CONFIG.yawOffsets[0];
+    frontSticker.renderOrder = 6;
+    can.add(frontSticker);
+
+    const backSticker = new THREE.Mesh(res.wordmarkGeo, res.wordmarkBackMaterial);
+    backSticker.position.y = BOTTLE_WORDMARK_MESH_CONFIG.yOffset;
+    backSticker.rotation.y = BOTTLE_WORDMARK_MESH_CONFIG.yawOffsets[1];
+    backSticker.renderOrder = 6;
+    can.add(backSticker);
+
+    return can;
+  };
+
+  // Custom Festive Holiday Edition ruby-crimson lacquer shell + crisp white/gold BOCA wordmark for Shop Single
+  const holidayRedMaterial = new THREE.MeshPhysicalMaterial({
+    color: '#b5141c',
+    metalness: 0.28,
+    roughness: 0.16,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.06,
+    clearcoatNormalMap: res.petOuterMaterial.clearcoatNormalMap,
+    clearcoatNormalScale: new THREE.Vector2(0.08, 0.08),
+    envMapIntensity: 1.45,
+    side: THREE.FrontSide,
+  });
+  const holidayWordmarkPart = createBottleWordmarkPart({
+    bottleHeight: H,
+    bodyRadius: res.bodyRadius,
+    color: '#ffffff',
+  });
+  let shopDisposed = false;
+  const drawHolidayWordmark = () => {
+    if (shopDisposed) return;
+    holidayWordmarkPart.updateTexture(
+      '"Instrument Serif", Georgia, serif',
+      'upper',
+      null,
+      undefined,
+      undefined,
+      'rgba(255, 255, 255, 0.99)'
+    );
+  };
+  drawHolidayWordmark();
+  if (typeof document !== 'undefined' && document.fonts) {
+    void document.fonts.ready.then(drawHolidayWordmark);
+  }
+
+  // Column 1 (Left, x = -2.55): Custom Festive Holiday Ruby-Red Single can with crisp white seamed lid
+  const col1 = new THREE.Group();
+  col1.name = 'ShopCol1_HolidaySingle';
+  col1.position.set(-2.55, 0.48, 0);
+  col1.scale.setScalar(0.68);
+  {
+    const redCan = new THREE.Group();
+    const redOuter = new THREE.Mesh(shopOuterGeo, holidayRedMaterial);
+    redOuter.renderOrder = 3;
+    redCan.add(redOuter);
+
+    const redLid = new THREE.Mesh(shopLidGeo, res.clearLidMaterial);
+    redLid.renderOrder = 4;
+    redCan.add(redLid);
+
+    redCan.add(holidayWordmarkPart.group);
+    col1.add(redCan);
+  }
+  group.add(col1);
+
+  // Column 2 (Center, x = 0.0): 6-Pack sculptural 2x3 cluster
+  const col2 = new THREE.Group();
+  col2.name = 'ShopCol2_SixPack';
+  col2.position.set(0.0, 0.48, 0);
+  col2.scale.setScalar(0.46);
+  const sixPackCans: Array<{ can: THREE.Group; nx: number; nz: number }> = [];
+  for (let i = 0; i < 6; i++) {
+    const col = i % 3;
+    const row = Math.floor(i / 3);
+    const nx = col - 1;
+    const nz = row - 0.5;
+    const can = buildCanClone();
+    can.position.set(nx * 0.90, 0, nz * 0.90);
+    col2.add(can);
+    sixPackCans.push({ can, nx, nz });
+  }
+  group.add(col2);
+
+  // Column 3 (Right, x = +2.55): 24-Pack 2-tier 4x3 architectural stack
+  const col3 = new THREE.Group();
+  col3.name = 'ShopCol3_Case24';
+  col3.position.set(2.55, 0.48, 0);
+  col3.scale.setScalar(0.28);
+  const case24Cans: Array<{ can: THREE.Group; nx: number; nz: number; tier: number }> = [];
+  for (let i = 0; i < 24; i++) {
+    const tier = Math.floor(i / 12);
+    const ti = i % 12;
+    const col = ti % 4;
+    const row = Math.floor(ti / 4);
+    const nx = col - 1.5;
+    const nz = row - 1;
+    const can = buildCanClone();
+    can.position.set(
+      nx * 0.90,
+      tier === 0 ? -H * 0.502 : H * 0.502,
+      nz * 0.90
+    );
+    col3.add(can);
+    case24Cans.push({ can, nx, nz, tier });
+  }
+  group.add(col3);
+
+  // Row 2: 3 procedural BOCA WATER luxury apparel sculptures (Shirt, Hat, Hoodie)
+  const merch = createShopMerchTrio();
+  const colShirt = merch.shirtGroup;
+  const colHat = merch.hatGroup;
+  const colHoodie = merch.hoodieGroup;
+  group.add(colShirt, colHat, colHoodie);
+
+  let visibilityBlend = 0;
+  let hover1 = 0;
+  let hover6 = 0;
+  let hover24 = 0;
+  let hoverShirt = 0;
+  let hoverHat = 0;
+  let hoverHoodie = 0;
+
+  // Cached DOM slot references + pre-allocated ray unprojection scratch vector (0 allocs/frame)
+  const slotCache: Partial<Record<ShopItemId, HTMLElement | null>> = {};
+  const unprojVec = new THREE.Vector3();
+  const itemEntries: ReadonlyArray<{
+    id: ShopItemId;
+    obj: THREE.Group;
+    heightRatio: number;
+  }> = [
+    { id: '1-pack', obj: col1, heightRatio: 0.415 },
+    { id: '6-pack', obj: col2, heightRatio: 0.285 },
+    { id: '24-pack', obj: col3, heightRatio: 0.178 },
+    { id: 'shirt', obj: colShirt, heightRatio: 0.54 },
+    { id: 'hat', obj: colHat, heightRatio: 0.62 },
+    { id: 'hoodie', obj: colHoodie, heightRatio: 0.52 },
+  ];
+
+  const getSlotEl = (id: ShopItemId): HTMLElement | null => {
+    const cached = slotCache[id];
+    if (cached && cached.isConnected) return cached;
+    if (typeof document === 'undefined') return null;
+    const found = document.querySelector<HTMLElement>(`[data-shop-slot="${id}"]`);
+    slotCache[id] = found;
+    return found;
+  };
+
+  const update = (
+    time: number,
+    dt: number,
+    active: boolean,
+    scroll: ScrollState,
+    hoveredPack: ShopItemId | null = null,
+    _isMobilePortrait = false,
+    _shopScrollProgress = 0,
+    camera?: THREE.PerspectiveCamera,
+    viewportW = 1280,
+    viewportH = 800
+  ) => {
+    void _isMobilePortrait;
+    void _shopScrollProgress;
+    const clampedDt = Math.min(Math.max(dt, 0.001), 0.045);
+    const target = active ? 1 : 0;
+    const speed = active ? 7.5 : 10.0;
+    visibilityBlend = THREE.MathUtils.lerp(
+      visibilityBlend,
+      target,
+      1 - Math.exp(-clampedDt * speed)
+    );
+
+    if (visibilityBlend < 0.02) {
+      group.visible = false;
+      return;
+    }
+
+    group.visible = true;
+    group.position.set(0, 0, 0);
+    group.scale.setScalar(1);
+
+    // Smoothly damp per-item hover elevation & gentle turn
+    const hoverAlpha = 1 - Math.exp(-clampedDt * 7.5);
+    hover1 = THREE.MathUtils.lerp(hover1, hoveredPack === '1-pack' ? 1 : 0, hoverAlpha);
+    hover6 = THREE.MathUtils.lerp(hover6, hoveredPack === '6-pack' ? 1 : 0, hoverAlpha);
+    hover24 = THREE.MathUtils.lerp(hover24, hoveredPack === '24-pack' ? 1 : 0, hoverAlpha);
+    hoverShirt = THREE.MathUtils.lerp(hoverShirt, hoveredPack === 'shirt' ? 1 : 0, hoverAlpha);
+    hoverHat = THREE.MathUtils.lerp(hoverHat, hoveredPack === 'hat' ? 1 : 0, hoverAlpha);
+    hoverHoodie = THREE.MathUtils.lerp(hoverHoodie, hoveredPack === 'hoodie' ? 1 : 0, hoverAlpha);
+
+    const hoverById: Record<ShopItemId, number> = {
+      '1-pack': hover1,
+      '6-pack': hover6,
+      '24-pack': hover24,
+      shirt: hoverShirt,
+      hat: hoverHat,
+      hoodie: hoverHoodie,
+    };
+
+    const px = scroll.pointerX;
+    const py = scroll.pointerY;
+
+    if (camera && viewportW > 0 && viewportH > 0) {
+      camera.updateMatrixWorld();
+      const camZ = Math.max(0.5, Math.abs(camera.position.z));
+      const visibleH = 2 * camZ * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
+      const enterScale = 0.92 + visibilityBlend * 0.08;
+
+      for (let i = 0; i < itemEntries.length; i++) {
+        const entry = itemEntries[i];
+        const slotEl = getSlotEl(entry.id);
+        if (!slotEl) {
+          entry.obj.visible = false;
+          continue;
+        }
+        const rect = slotEl.getBoundingClientRect();
+        if (
+          rect.width < 1 ||
+          rect.height < 1 ||
+          rect.bottom < -120 ||
+          rect.top > viewportH + 120
+        ) {
+          entry.obj.visible = false;
+          continue;
+        }
+
+        entry.obj.visible = true;
+        const cx = rect.left + rect.width * 0.5;
+        const cy = rect.top + rect.height * 0.5;
+        const ndcX = (cx / viewportW) * 2 - 1;
+        const ndcY = -((cy / viewportH) * 2 - 1);
+
+        // Exact 1:1 ray-to-z=0 plane intersection: ZERO scroll lag, pixel-locked to DOM slot
+        unprojVec.set(ndcX, ndcY, 0.5).unproject(camera).sub(camera.position).normalize();
+        const rayT = -camera.position.z / (Math.abs(unprojVec.z) > 1e-5 ? unprojVec.z : -1);
+        const worldX = camera.position.x + unprojVec.x * rayT;
+        const worldY = camera.position.y + unprojVec.y * rayT;
+
+        const hVal = hoverById[entry.id];
+        const slotWorldH = (rect.height / viewportH) * visibleH;
+        const idleBreathY = Math.sin(time * 0.9 + i * 0.9) * 0.015;
+        entry.obj.position.set(worldX, worldY + idleBreathY + hVal * 0.055, 0);
+        entry.obj.scale.setScalar(
+          slotWorldH * entry.heightRatio * enterScale * (1 + hVal * 0.07)
+        );
+      }
+    }
+
+    col1.rotation.set(
+      0.06 + py * (0.06 + hover1 * 0.06),
+      -0.22 + Math.sin(time * 0.42) * 0.16 + px * (0.18 + hover1 * 0.14),
+      -0.04 - hover1 * 0.04
+    );
+
+    col2.rotation.set(
+      0.18 + py * (0.06 + hover6 * 0.06),
+      -0.34 + time * 0.16 + px * (0.16 + hover6 * 0.14),
+      0
+    );
+    const s6 = THREE.MathUtils.lerp(0.90, 1.12, hover6);
+    for (let i = 0; i < sixPackCans.length; i++) {
+      const item = sixPackCans[i];
+      item.can.position.set(item.nx * s6, hover6 * (item.nz > 0 ? -0.05 : 0.05), item.nz * s6);
+      item.can.rotation.set(item.nz * hover6 * 0.10, 0, -item.nx * hover6 * 0.08);
+    }
+
+    col3.rotation.set(
+      0.18 + py * (0.06 + hover24 * 0.06),
+      -0.42 + time * 0.14 + px * (0.16 + hover24 * 0.14),
+      0
+    );
+    const s24 = THREE.MathUtils.lerp(0.90, 1.07, hover24);
+    const tierGap = THREE.MathUtils.lerp(H * 0.502, H * 0.56, hover24);
+    for (let i = 0; i < case24Cans.length; i++) {
+      const item = case24Cans[i];
+      item.can.position.set(
+        item.nx * s24,
+        item.tier === 0 ? -tierGap : tierGap,
+        item.nz * s24
+      );
+      item.can.rotation.set(item.nz * hover24 * 0.05, 0, -item.nx * hover24 * 0.04);
+    }
+
+    // Row 2 apparel gentle idle turntable breath + hover turn
+    colShirt.rotation.set(
+      0.04 + py * (0.05 + hoverShirt * 0.05),
+      -0.14 + Math.sin(time * 0.45) * 0.14 + hoverShirt * 0.30 + px * (0.14 + hoverShirt * 0.12),
+      0
+    );
+    colHat.rotation.set(
+      0.10 + py * (0.06 + hoverHat * 0.05),
+      -0.28 + Math.sin(time * 0.48 + 1.0) * 0.18 + hoverHat * 0.34 + px * (0.16 + hoverHat * 0.12),
+      0
+    );
+    colHoodie.rotation.set(
+      0.04 + py * (0.05 + hoverHoodie * 0.05),
+      0.12 + Math.sin(time * 0.44 + 2.1) * 0.14 - hoverHoodie * 0.30 + px * (0.14 + hoverHoodie * 0.12),
+      0
+    );
+  };
+
+  const updateMerchMaterials = (isDark: boolean, isGold: boolean) => {
+    merch.updateMerchMaterials(isDark, isGold);
+    if (isGold) {
+      holidayWordmarkPart.applyConfig({
+        color: '#ffea7a',
+        emissiveColor: '#ffd038',
+        metalness: 0.24,
+        roughness: 0.22,
+        clearcoat: 0.50,
+        clearcoatRoughness: 0.12,
+        sheen: 0.0,
+        envMapIntensity: 1.85,
+        emissiveIntensity: 0.64,
+        sparkleMix: 1.0,
+      });
+    } else {
+      holidayWordmarkPart.applyConfig({
+        color: '#ffffff',
+        emissiveColor: '#ffffff',
+        metalness: 0.06,
+        roughness: 0.26,
+        clearcoat: 0.50,
+        clearcoatRoughness: 0.22,
+        sheen: 0.35,
+        envMapIntensity: 1.45,
+        emissiveIntensity: 0.12,
+        sparkleMix: 0.0,
+      });
+    }
+  };
+
+  const setSparkleTime = (time: number) => {
+    holidayWordmarkPart.setSparkleTime(time);
+  };
+
+  const dispose = () => {
+    shopDisposed = true;
+    merch.dispose();
+    holidayWordmarkPart.dispose();
+    holidayRedMaterial.dispose();
+    shopOuterGeo.dispose();
+    shopLidGeo.dispose();
+    shopPetMaterial.dispose();
+    miniMeniscusGeo.dispose();
+    miniMeniscusMat.dispose();
+  };
+
+  return {
+    group,
+    update,
+    updateMerchMaterials,
+    setSparkleTime,
     dispose,
   };
 }

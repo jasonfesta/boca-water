@@ -2,16 +2,34 @@
 
 @theme {
   --font-display: "Instrument Serif", Georgia, serif;
-  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Roboto", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Fragment Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
 @layer base {
-  :root {
+  :root,
+  [data-theme="light"] {
+    --frame-pad: 48px;
+    --header-clearance: 138px;
+    --bg: #f5f4f0;
+    --fg: #111113;
+    --fg-deep: #09090b;
+    --fg-soft: rgba(17, 17, 19, 0.78);
+    --fg-muted: rgba(17, 17, 19, 0.62);
+    --fg-subtle: rgba(17, 17, 19, 0.44);
+    --fg-copyright: rgba(17, 17, 19, 0.34);
+    --fg-hairline: rgba(17, 17, 19, 0.12);
+  }
+
+  [data-theme="dark"] {
     --bg: #030304;
     --fg: #f6f5f1;
-    --fg-muted: rgba(246, 245, 241, 0.72);
+    --fg-deep: #f6f5f1;
+    --fg-soft: rgba(246, 245, 241, 0.82);
+    --fg-muted: rgba(246, 245, 241, 0.68);
     --fg-subtle: rgba(246, 245, 241, 0.48);
+    --fg-copyright: rgba(246, 245, 241, 0.30);
+    --fg-hairline: rgba(246, 245, 241, 0.12);
   }
 
   * {
@@ -32,6 +50,7 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.28s ease, color 0.28s ease;
   }
 
   button {
@@ -47,18 +66,83 @@
   font-family: var(--font-sans);
 }
 
-/* Liquid / crystal glass large display headlines — zero drop shadows */
-.kp-glass-title {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.96) 0%,
-    rgba(235, 242, 248, 0.76) 54%,
-    rgba(215, 228, 240, 0.48) 100%
-  );
+/* Very bright luxury gold signature for top-left BOCA WATER wordmark */
+.boca-logo-gold {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cg fill='none'%3E%3Cpolygon points='12,8 15,10 13,14 10,12' fill='%23fffbe0' fill-opacity='0.82'/%3E%3Ccircle cx='34' cy='22' r='1.4' fill='%23fff8cc' fill-opacity='0.78'/%3E%3Cpolygon points='62,14 66,15 64,19 60,17' fill='%23ffe680' fill-opacity='0.72'/%3E%3Ccircle cx='82' cy='30' r='1.2' fill='%23ffffff' fill-opacity='0.88'/%3E%3Cpolygon points='22,46 26,44 27,48 23,50' fill='%23fff9d6' fill-opacity='0.76'/%3E%3Ccircle cx='50' cy='52' r='1.5' fill='%23ffffff' fill-opacity='0.82'/%3E%3Cpolygon points='76,58 80,60 78,64 74,62' fill='%23ffe98c' fill-opacity='0.75'/%3E%3Ccircle cx='16' cy='78' r='1.3' fill='%23ffffff' fill-opacity='0.85'/%3E%3Cpolygon points='44,82 48,80 49,84 45,86' fill='%23fff4b8' fill-opacity='0.76'/%3E%3Ccircle cx='86' cy='84' r='1.2' fill='%23fffbe0' fill-opacity='0.8'/%3E%3C/g%3E%3C/svg%3E"),
+    linear-gradient(180deg, #f8cf3c 0%, #e4ac14 52%, #c98d06 100%);
+  background-size: 96px 96px, 100% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  -webkit-text-stroke: 0.5px rgba(255, 255, 255, 0.28);
+  -webkit-text-stroke: 0.014em rgba(206, 148, 12, 0.52);
+  paint-order: stroke fill;
+}
+
+[data-theme="dark"] .boca-logo-gold {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cg fill='none'%3E%3Cpolygon points='12,8 15,10 13,14 10,12' fill='%23ffffff' fill-opacity='0.88'/%3E%3Ccircle cx='34' cy='22' r='1.4' fill='%23fffbe0' fill-opacity='0.82'/%3E%3Cpolygon points='62,14 66,15 64,19 60,17' fill='%23ffe98c' fill-opacity='0.78'/%3E%3Ccircle cx='82' cy='30' r='1.2' fill='%23ffffff' fill-opacity='0.92'/%3E%3Cpolygon points='22,46 26,44 27,48 23,50' fill='%23fffef2' fill-opacity='0.84'/%3E%3Ccircle cx='50' cy='52' r='1.5' fill='%23ffffff' fill-opacity='0.88'/%3E%3Cpolygon points='76,58 80,60 78,64 74,62' fill='%23ffef9e' fill-opacity='0.80'/%3E%3Ccircle cx='16' cy='78' r='1.3' fill='%23ffffff' fill-opacity='0.90'/%3E%3Cpolygon points='44,82 48,80 49,84 45,86' fill='%23fff7cc' fill-opacity='0.82'/%3E%3Ccircle cx='86' cy='84' r='1.2' fill='%23ffffff' fill-opacity='0.86'/%3E%3C/g%3E%3C/svg%3E"),
+    linear-gradient(180deg, #fff3b0 0%, #ffda4e 52%, #f0b822 100%);
+  -webkit-text-stroke: 0.014em rgba(255, 220, 92, 0.42);
+}
+
+/* Bolder sparkling 24k gold-flake treatment for main display titles (Beats 1-4 & Science) */
+@keyframes bocaGoldFlakeShimmer {
+  0% {
+    background-position: 0px 0px, 0% 50%;
+  }
+  50% {
+    background-position: 42px -24px, 100% 50%;
+  }
+  100% {
+    background-position: 0px 0px, 0% 50%;
+  }
+}
+
+.boca-title-gold-flakes {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' viewBox='0 0 90 90'%3E%3Cg fill='none'%3E%3Cpolygon points='5,7 8,5 7,9 4,9' fill='%23fffbe0' fill-opacity='0.94'/%3E%3Ccircle cx='18' cy='11' r='1.1' fill='%23ffe470' fill-opacity='0.9'/%3E%3Cpolygon points='29,6 32,8 30,11 27,9' fill='%23d49a0c' fill-opacity='0.62'/%3E%3Ccircle cx='44' cy='9' r='1.3' fill='%23fffbe0' fill-opacity='0.96'/%3E%3Cpolygon points='56,12 59,10 58,14 55,14' fill='%23f7ca38' fill-opacity='0.88'/%3E%3Ccircle cx='71' cy='7' r='1.0' fill='%23fffef2' fill-opacity='0.94'/%3E%3Cpolygon points='81,13 85,11 84,15 80,15' fill='%23d49a0c' fill-opacity='0.58'/%3E%3Ccircle cx='11' cy='24' r='1.2' fill='%23fffbe0' fill-opacity='0.92'/%3E%3Cpolygon points='23,22 26,20 25,24 22,24' fill='%23d49a0c' fill-opacity='0.58'/%3E%3Ccircle cx='37' cy='26' r='1.1' fill='%23ffffff' fill-opacity='0.95'/%3E%3Cpolygon points='50,24 54,22 52,27 49,26' fill='%23ffe470' fill-opacity='0.92'/%3E%3Ccircle cx='65' cy='23' r='1.3' fill='%23fffbe0' fill-opacity='0.94'/%3E%3Cpolygon points='77,27 80,25 79,29 76,29' fill='%23f7ca38' fill-opacity='0.88'/%3E%3Cpolygon points='6,40 10,38 9,42 5,42' fill='%23ffe470' fill-opacity='0.9'/%3E%3Ccircle cx='20' cy='43' r='1.3' fill='%23ffffff' fill-opacity='0.96'/%3E%3Cpolygon points='33,39 36,41 34,44 31,42' fill='%23d49a0c' fill-opacity='0.60'/%3E%3Ccircle cx='47' cy='44' r='1.0' fill='%23fffbe0' fill-opacity='0.92'/%3E%3Cpolygon points='60,38 64,37 62,42 59,41' fill='%23fffbe0' fill-opacity='0.94'/%3E%3Ccircle cx='74' cy='43' r='1.2' fill='%23ffe470' fill-opacity='0.9'/%3E%3Cpolygon points='84,39 87,41 85,44 82,42' fill='%23ffffff' fill-opacity='0.92'/%3E%3Ccircle cx='13' cy='57' r='1.1' fill='%23d49a0c' fill-opacity='0.58'/%3E%3Cpolygon points='26,55 30,53 28,58 25,57' fill='%23fffbe0' fill-opacity='0.95'/%3E%3Ccircle cx='41' cy='59' r='1.2' fill='%23ffe470' fill-opacity='0.92'/%3E%3Cpolygon points='54,56 57,58 55,61 52,59' fill='%23d49a0c' fill-opacity='0.62'/%3E%3Ccircle cx='68' cy='58' r='1.3' fill='%23ffffff' fill-opacity='0.96'/%3E%3Cpolygon points='80,55 84,54 82,59 79,58' fill='%23fffbe0' fill-opacity='0.92'/%3E%3Cpolygon points='8,73 11,71 10,75 7,75' fill='%23ffffff' fill-opacity='0.94'/%3E%3Ccircle cx='22' cy='76' r='1.1' fill='%23f7ca38' fill-opacity='0.9'/%3E%3Cpolygon points='35,72 39,70 37,75 34,74' fill='%23fffbe0' fill-opacity='0.94'/%3E%3Ccircle cx='49' cy='75' r='1.3' fill='%23d49a0c' fill-opacity='0.60'/%3E%3Cpolygon points='62,73 66,71 64,76 61,75' fill='%23ffe470' fill-opacity='0.92'/%3E%3Ccircle cx='76' cy='74' r='1.1' fill='%23fffbe0' fill-opacity='0.95'/%3E%3Cpolygon points='85,78 88,76 87,80 84,80' fill='%23d49a0c' fill-opacity='0.58'/%3E%3Ccircle cx='16' cy='86' r='1.2' fill='%23fffbe0' fill-opacity='0.92'/%3E%3Cpolygon points='42,84 45,86 43,89 40,87' fill='%23ffffff' fill-opacity='0.94'/%3E%3Ccircle cx='69' cy='86' r='1.1' fill='%23ffe470' fill-opacity='0.90'/%3E%3C/g%3E%3C/svg%3E"),
+    linear-gradient(
+      125deg,
+      #e5b31c 0%,
+      #f2c52e 26%,
+      #ffd94a 50%,
+      #e8b820 74%,
+      #f7ca38 100%
+    );
+  background-size: 90px 90px, 200% 200%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  -webkit-text-stroke: 0.016em #edc028;
+  paint-order: stroke fill;
+  animation: bocaGoldFlakeShimmer 10s ease-in-out infinite;
+}
+
+[data-theme="dark"] .boca-title-gold-flakes {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' viewBox='0 0 90 90'%3E%3Cg fill='none'%3E%3Cpolygon points='5,7 8,5 7,9 4,9' fill='%23ffffff' fill-opacity='0.98'/%3E%3Ccircle cx='18' cy='11' r='1.1' fill='%23ffef99' fill-opacity='0.92'/%3E%3Cpolygon points='29,6 32,8 30,11 27,9' fill='%23dfaa18' fill-opacity='0.58'/%3E%3Ccircle cx='44' cy='9' r='1.3' fill='%23ffffff' fill-opacity='0.98'/%3E%3Cpolygon points='56,12 59,10 58,14 55,14' fill='%23ffe470' fill-opacity='0.90'/%3E%3Ccircle cx='71' cy='7' r='1.0' fill='%23ffffff' fill-opacity='0.96'/%3E%3Cpolygon points='81,13 85,11 84,15 80,15' fill='%23dfaa18' fill-opacity='0.54'/%3E%3Ccircle cx='11' cy='24' r='1.2' fill='%23fffbe0' fill-opacity='0.95'/%3E%3Cpolygon points='23,22 26,20 25,24 22,24' fill='%23dfaa18' fill-opacity='0.55'/%3E%3Ccircle cx='37' cy='26' r='1.1' fill='%23ffffff' fill-opacity='0.98'/%3E%3Cpolygon points='50,24 54,22 52,27 49,26' fill='%23ffec88' fill-opacity='0.94'/%3E%3Ccircle cx='65' cy='23' r='1.3' fill='%23ffffff' fill-opacity='0.96'/%3E%3Cpolygon points='77,27 80,25 79,29 76,29' fill='%23ffe470' fill-opacity='0.90'/%3E%3Cpolygon points='6,40 10,38 9,42 5,42' fill='%23ffec88' fill-opacity='0.92'/%3E%3Ccircle cx='20' cy='43' r='1.3' fill='%23ffffff' fill-opacity='0.98'/%3E%3Cpolygon points='33,39 36,41 34,44 31,42' fill='%23dfaa18' fill-opacity='0.56'/%3E%3Ccircle cx='47' cy='44' r='1.0' fill='%23fffbe0' fill-opacity='0.95'/%3E%3Cpolygon points='60,38 64,37 62,42 59,41' fill='%23ffffff' fill-opacity='0.96'/%3E%3Ccircle cx='74' cy='43' r='1.2' fill='%23ffec88' fill-opacity='0.92'/%3E%3Cpolygon points='84,39 87,41 85,44 82,42' fill='%23ffffff' fill-opacity='0.96'/%3E%3Ccircle cx='13' cy='57' r='1.1' fill='%23dfaa18' fill-opacity='0.56'/%3E%3Cpolygon points='26,55 30,53 28,58 25,57' fill='%23ffffff' fill-opacity='0.98'/%3E%3Ccircle cx='41' cy='59' r='1.2' fill='%23ffec88' fill-opacity='0.94'/%3E%3Cpolygon points='54,56 57,58 55,61 52,59' fill='%23dfaa18' fill-opacity='0.58'/%3E%3Ccircle cx='68' cy='58' r='1.3' fill='%23ffffff' fill-opacity='0.98'/%3E%3Cpolygon points='80,55 84,54 82,59 79,58' fill='%23fffbe0' fill-opacity='0.95'/%3E%3Cpolygon points='8,73 11,71 10,75 7,75' fill='%23ffffff' fill-opacity='0.96'/%3E%3Ccircle cx='22' cy='76' r='1.1' fill='%23ffe470' fill-opacity='0.92'/%3E%3Cpolygon points='35,72 39,70 37,75 34,74' fill='%23ffffff' fill-opacity='0.96'/%3E%3Ccircle cx='49' cy='75' r='1.3' fill='%23dfaa18' fill-opacity='0.56'/%3E%3Cpolygon points='62,73 66,71 64,76 61,75' fill='%23ffec88' fill-opacity='0.94'/%3E%3Ccircle cx='76' cy='74' r='1.1' fill='%23ffffff' fill-opacity='0.98'/%3E%3Cpolygon points='85,78 88,76 87,80 84,80' fill='%23dfaa18' fill-opacity='0.54'/%3E%3Ccircle cx='16' cy='86' r='1.2' fill='%23fffbe0' fill-opacity='0.95'/%3E%3Cpolygon points='42,84 45,86 43,89 40,87' fill='%23ffffff' fill-opacity='0.98'/%3E%3Ccircle cx='69' cy='86' r='1.1' fill='%23ffec88' fill-opacity='0.92'/%3E%3C/g%3E%3C/svg%3E"),
+    linear-gradient(
+      125deg,
+      #ffe066 0%,
+      #fff5b8 25%,
+      #ffd23b 50%,
+      #ffec94 75%,
+      #f5bf28 100%
+    );
+  -webkit-text-stroke: 0.015em #f8cf3c;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boca-title-gold-flakes {
+    animation: none;
+  }
+}
+
+/* Solid Vercel serif titles — zero gradient, zero stroke, zero drop shadow */
+.kp-serif-title {
+  font-family: var(--font-display);
+  color: var(--fg);
 }
 
 /* Coastal-drive kinetic scroll parallax stage — strictly above 3D canvas */
@@ -76,7 +160,7 @@
 .kp-section {
   position: absolute;
   inset: 0;
-  padding: 88px clamp(28px, 6vw, 88px);
+  padding: var(--header-clearance) var(--frame-pad) 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -101,20 +185,106 @@
   padding-bottom: clamp(56px, 9vh, 96px);
 }
 
+.kp-section.kp-align-bottom-center {
+  justify-content: flex-end;
+  align-items: center;
+  text-align: center;
+  padding-bottom: clamp(24px, 4.2vh, 48px);
+}
+
 .kp-headline-line {
   display: block;
   will-change: transform;
 }
 
-@media (max-width: 640px) {
+/* Minimal bottom-right corner controls (Reflective Gold finish + Dark/Light toggle) locked to 48px outer frame grid */
+.orbs-corner-controls {
+  position: fixed;
+  bottom: var(--frame-pad);
+  right: var(--frame-pad);
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.orbs-gold-toggle,
+.orbs-theme-toggle {
+  width: 36px;
+  height: 36px;
+  padding: 2px 0 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  opacity: 0.72;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.14s ease;
+}
+
+.orbs-gold-toggle:hover,
+.orbs-theme-toggle:hover,
+.orbs-gold-toggle.is-active {
+  opacity: 1;
+}
+
+.orbs-gold-toggle:active,
+.orbs-theme-toggle:active {
+  transform: scale(0.92);
+}
+
+.orbs-gold-coin {
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    135deg,
+    #fff2c6 0%,
+    #e6be5c 38%,
+    #a87920 72%,
+    #f5d784 100%
+  );
+  box-shadow: inset 0 1px 1.5px rgba(255, 252, 235, 0.75),
+    inset 0 -1px 1.5px rgba(105, 72, 12, 0.45);
+  transition: box-shadow 0.24s ease, transform 0.24s ease;
+}
+
+.orbs-gold-toggle.is-active .orbs-gold-coin {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.25px #d4a644,
+    inset 0 1px 1.5px rgba(255, 252, 235, 0.85);
+}
+
+@media (max-width: 639px) {
+  :root,
+  [data-theme="light"],
+  [data-theme="dark"] {
+    --frame-pad: 24px;
+    --header-clearance: 98px;
+  }
+
   .kp-section,
   .kp-section.kp-align-left,
   .kp-section.kp-align-right,
   .kp-section.kp-align-bottom-left {
-    padding: 80px 24px 48px;
+    padding: var(--header-clearance) 24px 80px;
     justify-content: flex-end;
     align-items: flex-start;
     text-align: left;
     gap: 12px;
+  }
+
+  .kp-section.kp-align-bottom-center {
+    padding: var(--header-clearance) 24px 48px;
+    justify-content: flex-end;
+    align-items: center;
+    text-align: center;
+    gap: 12px;
+  }
+
+  .orbs-corner-controls {
+    bottom: 20px;
+    right: 24px;
   }
 }

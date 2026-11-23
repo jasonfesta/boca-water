@@ -6,6 +6,8 @@ export interface WaterButtonProps {
   matchLabel?: string;
   active?: boolean;
   filled?: boolean;
+  shape?: 'puddle' | 'pill' | 'circle';
+  theme?: 'dark' | 'light';
   onClick: () => void;
   disabled?: boolean;
   title?: string;
@@ -13,10 +15,9 @@ export interface WaterButtonProps {
   scale?: number;
 }
 
-const FONT_SIZE = 31;
-const CAP_HEIGHT = 23;
-const EQUAL_PAD = 54;
-const MARGIN = 28;
+const FONT_SIZE = 54;
+const EQUAL_PAD = 72;
+const MARGIN = 22;
 const CSS_SCALE = 0.381;
 
 const LOOP = 8;
@@ -49,15 +50,16 @@ function measureLabelWidth(text: string): number {
   const c = document.createElement('canvas');
   const ctx = c.getContext('2d');
   if (!ctx) return text.length * 26;
-  ctx.font = `500 ${FONT_SIZE}px "Instrument Sans", system-ui, sans-serif`;
+  ctx.font = `400 ${FONT_SIZE}px "Instrument Serif", Georgia, serif`;
   return Math.ceil(ctx.measureText(text).width);
 }
 
 const VS = `#version 300 es
 in vec2 a;void main(){gl_Position=vec4(a,0.,1.);}`;
 
-// Clear/transparent coastal-drive water-ripple shader: magnetic hover bulge,
-// 14-ring wake, 3-ring click ripples, studio Fresnel rims, normal-refracted label.
+// Exact coastal-drive full-pill black water/ferrofluid shader: rich obsidian liquid capsule,
+// studio Fresnel rim reflections, specular glints, magnetic hover bulge, 14-ring wake,
+// 3-ring click ripples, and normal-refracted crisp pure-white Instrument Serif label.
 const FS = `#version 300 es
 precision highp float;
 uniform vec2 uRes,uStage;uniform float uT,uLoop,uActive,uFilled;uniform vec4 uBtn;uniform float uRad;
@@ -156,13 +158,17 @@ export function WaterButton({
   doneLabel,
   matchLabel,
   active = false,
-  filled = false,
+  filled = true,
+  shape = 'pill',
+  theme: _theme,
   onClick,
   disabled = false,
   title,
   className = '',
-  scale = 1.25,
+  scale = 1,
 }: WaterButtonProps) {
+  void _theme;
+  void shape;
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -182,14 +188,17 @@ export function WaterButton({
       measureLabelWidth(secondaryLabel),
       matchLabel ? measureLabelWidth(matchLabel) : 0,
     );
-    const bh = CAP_HEIGHT + EQUAL_PAD * 2;
-    const bw = Math.max(bh, textW + EQUAL_PAD * 2);
+    // Full-pill capsule geometry: height * 0.5 corner radius (matches CSS rounded-full)
+    const bh = 148;
+    const bw = Math.max(366, textW + EQUAL_PAD * 2);
     const br = bh * 0.5;
     const stageW = bw + MARGIN * 2;
     const stageH = bh + MARGIN * 2;
     const bx = stageW * 0.5;
-    // Optical vertical centering (-2px CSS down -> ~4px in stage coords)
-    const by = stageH * 0.5 + 4;
+    const by = stageH * 0.5;
+    // Cancel raymarch dome lift (~4.9 stage units) + optical -2px CSS down (~5.1 stage units)
+    const labelY = by + 10;
+    const snapEven = (v: number) => Math.max(2, Math.round(v / 2) * 2);
     return {
       bw,
       bh,
@@ -198,8 +207,9 @@ export function WaterButton({
       stageH,
       bx,
       by,
-      cssW: Math.round(stageW * cssScale),
-      cssH: Math.round(stageH * cssScale),
+      labelY,
+      cssW: snapEven(stageW * cssScale),
+      cssH: snapEven(stageH * cssScale),
       insetX: Math.round(MARGIN * cssScale),
       insetY: Math.round(MARGIN * cssScale),
     };
@@ -250,25 +260,25 @@ export function WaterButton({
     const U = {} as Record<Uniform, WebGLUniformLocation | null>;
     for (const n of UNIFORMS) U[n] = gl.getUniformLocation(pr, n);
 
-    const buildLabelTex = () => {
+    const buildLabelTex = (existingTex?: WebGLTexture | null) => {
       const c = document.createElement('canvas');
       c.width = Math.round(dims.stageW * 3);
       c.height = Math.round(dims.stageH * 3);
       const ctx = c.getContext('2d');
-      if (!ctx) return null;
+      if (!ctx) return existingTex ?? null;
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, c.width, c.height);
       ctx.scale(3, 3);
-      ctx.font = `500 ${FONT_SIZE}px "Instrument Sans", system-ui, sans-serif`;
+      ctx.font = `400 ${FONT_SIZE}px "Instrument Serif", Georgia, serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.globalCompositeOperation = 'lighter';
       ctx.fillStyle = '#f00';
-      ctx.fillText(label, dims.bx, dims.by);
+      ctx.fillText(label, dims.bx, dims.labelY);
       ctx.fillStyle = '#0f0';
-      ctx.fillText(secondaryLabel, dims.bx, dims.by);
+      ctx.fillText(secondaryLabel, dims.bx, dims.labelY);
 
-      const tex = gl.createTexture();
+      const tex = existingTex ?? gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
       gl.generateMipmap(gl.TEXTURE_2D);
@@ -284,7 +294,19 @@ export function WaterButton({
     };
 
     const tex = buildLabelTex();
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    let disposed = false;
+    if (typeof document !== 'undefined' && 'fonts' in document) {
+      void document.fonts
+        .load(`400 ${FONT_SIZE}px "Instrument Serif"`, label)
+        .then(() => {
+          if (!disposed && tex) {
+            buildLabelTex(tex);
+          }
+        })
+        .catch(() => {});
+    }
+    const isMobile = window.innerWidth < 768;
+    const dpr = Math.min(isMobile ? 1.5 : 2, window.devicePixelRatio || 1);
 
     const syncSize = () => {
       const rect = wrap.getBoundingClientRect();
@@ -298,6 +320,17 @@ export function WaterButton({
     syncSize();
     const ro = new ResizeObserver(syncSize);
     ro.observe(wrap);
+
+    let isIntersecting = true;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.length > 0) {
+          isIntersecting = entries[0].isIntersecting;
+        }
+      },
+      { rootMargin: '20px' },
+    );
+    io.observe(wrap);
 
     const inPill = (x: number, y: number) => {
       const dx = Math.max(Math.abs(x - dims.bx) - (dims.bw / 2 - dims.br), 0);
@@ -346,26 +379,7 @@ export function WaterButton({
     wrap.addEventListener('pointerleave', onLeave, { passive: true });
     btn.addEventListener('click', handleBtnClick);
 
-    const frame = () => {
-      raf = requestAnimationFrame(frame);
-      if (btn.disabled) return;
-      const rect = wrap.getBoundingClientRect();
-      if (
-        rect.width < 1 ||
-        rect.bottom < -20 ||
-        rect.top > window.innerHeight + 20
-      ) {
-        return;
-      }
-      const sec = wrap.closest('.kp-section') as HTMLElement | null;
-      if (
-        sec &&
-        (sec.style.visibility === 'hidden' ||
-          parseFloat(sec.style.opacity || '1') < 0.02)
-      ) {
-        return;
-      }
-
+    const drawNow = () => {
       const now = performance.now() / 1000;
       const dt = lastNow === null ? 1 / 60 : clamp(now - lastNow, 0, 0.05);
       lastNow = now;
@@ -419,10 +433,41 @@ export function WaterButton({
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
 
+    let frameTick = 0;
+    const frame = () => {
+      raf = requestAnimationFrame(frame);
+      if (document.hidden || btn.disabled || !isIntersecting) return;
+      const sec = wrap.closest('.kp-section') as HTMLElement | null;
+      if (
+        sec &&
+        (sec.style.visibility === 'hidden' ||
+          parseFloat(sec.style.opacity || '1') < 0.02)
+      ) {
+        return;
+      }
+      // Throttle ambient 8s shimmer to 30fps when idle; snap to 60fps on hover/wake/click
+      const isIdle =
+        lhv < 0.005 && trail.length === 0 && clickT === null && !inPill(lp.x, lp.y);
+      frameTick++;
+      if (isIdle && (frameTick & 1) === 1) return;
+      drawNow();
+    };
+
+    const onVisibility = () => {
+      if (!document.hidden) {
+        lastNow = null;
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    drawNow();
     raf = requestAnimationFrame(frame);
 
     return () => {
+      disposed = true;
       cancelAnimationFrame(raf);
+      document.removeEventListener('visibilitychange', onVisibility);
+      io.disconnect();
       ro.disconnect();
       wrap.removeEventListener('pointermove', onMove);
       wrap.removeEventListener('pointerleave', onLeave);
@@ -432,6 +477,7 @@ export function WaterButton({
       gl.deleteProgram(pr);
       gl.deleteShader(vs);
       gl.deleteShader(fs);
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
     };
   }, [label, secondaryLabel, dims]);
 
@@ -460,7 +506,7 @@ export function WaterButton({
           left: `${dims.insetX}px`,
           right: `${dims.insetX}px`,
         }}
-        className="absolute cursor-pointer rounded-full border-0 bg-transparent text-transparent outline-none focus-visible:ring-2 focus-visible:ring-[#f6f5f1]/60"
+        className="absolute cursor-pointer rounded-full border-0 bg-transparent text-transparent outline-none focus-visible:ring-2 focus-visible:ring-[var(--fg)]/45"
       >
         {label}
       </button>

@@ -117,6 +117,26 @@ Comparing every build (`study-01.png` → `study-05.png`, 1280×800 headless Web
   - `bottleGeometry.ts`: Split the smooth shallow injection-molded PET base punt (`buildBasePuntDomeProfile`, `0.044H` matching Orka photo #1) onto its own `petPuntMaterial` with **ZERO `bumpMap` and ZERO `clearcoatNormalMap`** (eliminating the polar UV tangent singularity permanently!).
   - `bottleGeometry.ts`: Upgraded `lidRimMaterial` shader with dual crisp studio specular highlights (`pow(spec, 36)` + `pow(1 - ndv, 3.6) * 0.68`) so the rolled crystal-clear seam chime gleams cleanly at hero and macro distances without any whiteout.
 
+---
+
+## Defect Pass 4 (`defect-04.png` + `defect-04-top.png` + `defect-04-bottom.png`) — Score: 95 / 100
+- **What improved**:
+  - **BOTTOM PUNT BREAKTHROUGH (`defect-04-bottom.png` & `defect-04.png`)**: 100% elimination of the half-white/half-black triangle AND 100% elimination of the polar normal-map heart-dimple! Smooth, rounded PET heel & molded base punt now match Orka photo #1 cleanly, and `@liquid-3d`'s air-in-water optical bubbles look photographic.
+  - **TOP MACRO (`defect-04-top.png`)**: Crisp rolled double-seam speculars with zero jagged countersink teeth and zero whiteout.
+- **Final Micro-Polish for Defect Pass 5**:
+  - Drop `petPuntMaterial.opacity` (`0.20 → 0.08`, `FrontSide`) + add subtle additive curved optical refraction sheen (`puntRimMat`, `0.34`) so the base punt reads as water-clear molded PET instead of a faintly smoky gray oval.
+  - Drop `clearLidMaterial.opacity` (`0.22 → 0.14`) and `clearPullTabMaterial.opacity` (`0.32 → 0.24`) for even cleaner crystal-clear transparency across the top lid deck.
+
+---
+
+## Defect Pass 5 (`defect-05.png` + `defect-05-top.png` + `defect-05-bottom.png`) — Score: 98 / 100
+- **Hero (`defect-05.png`)**: Commanding crystal-clear 12 fl oz PET can on right (cleanly opposite Beat 1 left text) against deep obsidian diagonal studio shine (zero drop shadows), water-clear molded base punt, full-height matte-satin `BOCA` (front `0°`) & `water` (back `180°`), glossy Orka teardrop air pocket, and crystal-clear seamed pull-tab lid.
+- **Top Macro (`defect-05-top.png`)**: 112-segment smooth double-rolled crystal-clear PET seam chime, transparent lid deck, sculpted clear acrylic pull-tab & rivet, flush scored drink aperture, zero jagged countersink refraction teeth, and zero blow-out.
+- **Bottom Macro (`defect-05-bottom.png`)**: 128-segment rounded hemispherical PET heel + smooth parabolic molded base punt dome with optical sheen — zero floating torus ring, zero V-pinch/heart-dimple, zero half-white/half-black seam split, and photographic air-in-water optical-lensing bubbles.
+- **Verification**: `tsc --noEmit` = **0 errors**, `vite build` = **PASS**, `lint_donts.py website/src/scene` = **0 errors, 0 warnings**.
+
+
+
 
 
 

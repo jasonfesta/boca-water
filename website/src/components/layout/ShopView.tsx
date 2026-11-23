@@ -1,134 +1,171 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import {
-  PACK_LIST,
+  SHOP_CATALOG_LIST,
   formatCurrency,
-  openStripePaymentLink,
-  resolveStripePaymentLink,
-  type PackId,
+  openShopItemStripeLink,
+  resolveShopItemStripeLink,
+  type ShopItemId,
 } from '@/commerce';
 import { WaterButton } from '@/components/ui/WaterButton';
 
 const LUXURY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 export interface ShopViewProps {
-  selectedPack: PackId;
+  selectedPack: ShopItemId;
   packExpanded: boolean;
-  onSelectPack: (packId: PackId) => void;
+  onSelectPack: (itemId: ShopItemId) => void;
   onToggleExpand: () => void;
+  onHoverPack: (itemId: ShopItemId | null) => void;
+  onScrollProgress?: (progress: number) => void;
 }
+
+declare global {
+  interface Window {
+    __setBocaShopScroll?: (progress: number) => void;
+  }
+}
+
+const ALL_SHOP_ITEMS = SHOP_CATALOG_LIST;
 
 export function ShopView({
   selectedPack,
-  packExpanded,
   onSelectPack,
-  onToggleExpand,
+  onHoverPack,
+  onScrollProgress,
 }: ShopViewProps) {
-  const [noticePack, setNoticePack] = useState<PackId | null>(null);
+  const [noticeItem, setNoticeItem] = useState<ShopItemId | null>(null);
+  const [localHover, setLocalHover] = useState<ShopItemId | null>(null);
+  const hoverRef = useRef<ShopItemId | null>(null);
+  const scrollerRef = useRef<HTMLElement>(null);
+  const onScrollProgressRef = useRef(onScrollProgress);
+  onScrollProgressRef.current = onScrollProgress;
 
-  const handleCheckout = (packId: PackId) => {
-    const link = resolveStripePaymentLink(packId);
+  // Report normalized vertical scroll progress (0..1) and expose __setBocaShopScroll helper
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+
+    const publish = () => {
+      const maxScroll = Math.max(
+        1,
+        scroller.scrollHeight - scroller.clientHeight,
+      );
+      const p = Math.max(0, Math.min(1, scroller.scrollTop / maxScroll));
+      onScrollProgressRef.current?.(p);
+    };
+
+    window.__setBocaShopScroll = (progress: number) => {
+      const clamped = Math.max(0, Math.min(1, progress));
+      const maxScroll = Math.max(
+        1,
+        scroller.scrollHeight - scroller.clientHeight,
+      );
+      scroller.scrollTop = clamped * maxScroll;
+      onScrollProgressRef.current?.(clamped);
+    };
+
+    scroller.addEventListener('scroll', publish, { passive: true });
+    publish();
+
+    return () => {
+      delete window.__setBocaShopScroll;
+      scroller.removeEventListener('scroll', publish);
+      onScrollProgressRef.current?.(0);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      onHoverPack(null);
+    };
+  }, [onHoverPack]);
+
+  const updateHover = (next: ShopItemId | null) => {
+    if (hoverRef.current === next) return;
+    hoverRef.current = next;
+    setLocalHover(next);
+    onHoverPack(next);
+  };
+
+  const handleCheckout = (itemId: ShopItemId) => {
+    onSelectPack(itemId);
+    const link = resolveShopItemStripeLink(itemId);
     if (link) {
-      openStripePaymentLink(packId);
+      openShopItemStripeLink(itemId);
       return;
     }
-    setNoticePack(packId);
+    setNoticeItem(itemId);
   };
 
   return (
     <motion.section
+      ref={scrollerRef}
       key="shop-view"
-      initial={{ opacity: 0, y: 34 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{
         opacity: 1,
         y: 0,
-        transition: { duration: 1.05, ease: LUXURY_EASE },
+        transition: { duration: 0.42, ease: LUXURY_EASE },
       }}
       exit={{
         opacity: 0,
-        y: -24,
-        transition: { duration: 0.45, ease: LUXURY_EASE },
+        y: -10,
+        pointerEvents: 'none',
+        transition: { duration: 0.26, ease: LUXURY_EASE },
       }}
-      aria-label="Shop Boca Water"
-      className="fixed inset-0 z-20 pointer-events-none flex items-center justify-end px-6 sm:px-14 lg:px-20"
+      aria-label="Shop BOCA Water"
+      onWheel={(e) => e.stopPropagation()}
+      onTouchMove={(e) => e.stopPropagation()}
+      className="fixed inset-0 z-20 h-[100dvh] pointer-events-auto overflow-y-auto snap-y snap-mandatory md:snap-none overscroll-y-contain [touch-action:pan-y] [-webkit-overflow-scrolling:touch] px-6 sm:px-[48px]"
     >
-      <div className="pointer-events-auto w-full max-w-[460px] flex flex-col gap-6">
-        <div>
-          <h1 className="kp-glass-title font-ui text-[clamp(44px,5.4vw,72px)] font-semibold leading-[0.95] tracking-[-0.035em]">
-            Shop
-          </h1>
-          <p className="mt-3 font-ui text-[15px] leading-[1.6] text-[#f6f5f1]/66">
-            Select a pack to inspect the formation and proceed straight to
-            checkout.
-          </p>
-        </div>
-
-        <div className="flex flex-col divide-y divide-[#f6f5f1]/[0.1]">
-          {PACK_LIST.map((pack, idx) => {
-            const isSelected = pack.id === selectedPack;
+      <div className="mx-auto w-full max-w-[1160px] md:pt-[148px] md:pb-[96px]">
+        {/* Normal, evenly spaced 2x3 Desktop grid + 6 full-viewport 100dvh centered slides on Mobile */}
+        <div className="flex flex-col md:grid md:grid-cols-3 md:gap-x-8 md:gap-y-16">
+          {ALL_SHOP_ITEMS.map((item) => {
+            const isSelected = item.id === selectedPack;
+            const isHovered = item.id === localHover;
             return (
-              <motion.div
-                key={pack.id}
-                initial={{ opacity: 0, y: 18 }}
-                animate={{
-                  opacity: 1,
-                  y: 0,
-                  transition: {
-                    duration: 0.9,
-                    delay: 0.14 + idx * 0.12,
-                    ease: LUXURY_EASE,
-                  },
-                }}
-                className="flex items-center justify-between gap-4 py-4"
+              <div
+                key={item.id}
+                onPointerEnter={() => updateHover(item.id)}
+                onPointerLeave={() => updateHover(null)}
+                onClick={() => onSelectPack(item.id)}
+                className="pointer-events-auto flex h-[100dvh] shrink-0 snap-start snap-always flex-col items-center justify-center pt-[96px] pb-[28px] md:h-auto md:shrink md:snap-align-none md:justify-start md:pt-0 md:pb-0 border-none bg-transparent text-center"
               >
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isSelected) {
-                      onToggleExpand();
-                    } else {
-                      onSelectPack(pack.id);
-                    }
-                    setNoticePack(null);
-                  }}
-                  className="flex-1 text-left border-0 bg-transparent px-0 pt-[2px] pb-0 font-ui transition-opacity duration-200 hover:opacity-100"
-                >
-                  <div className="flex items-baseline gap-3">
-                    <span
-                      className={`text-[18px] font-medium tracking-[-0.015em] transition-colors duration-200 ${
-                        isSelected ? 'text-[#f6f5f1]' : 'text-[#f6f5f1]/68'
-                      }`}
-                    >
-                      {pack.name}
-                    </span>
-                    <span className="text-[14px] text-[#f6f5f1]/48 tabular-nums">
-                      {formatCurrency(pack.priceCents)}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-[13.5px] text-[#f6f5f1]/46">
-                    {pack.bottleCount === 1
-                      ? 'Single 12 fl oz crystal-clear PET can'
-                      : `${pack.bottleCount} cans, ${formatCurrency(pack.pricePerBottleCents)} per can${
-                          isSelected && packExpanded ? ' (expanded)' : ''
-                        }`}
-                  </p>
-                </button>
-
-                <WaterButton
-                  label={`Order ${pack.shortName}`}
-                  scale={1.08}
-                  active={isSelected}
-                  onClick={() => handleCheckout(pack.id)}
+                {/* Explicit 1:1 DOM-locked 3D stage slot unprojected live per frame in BottleScene */}
+                <div
+                  data-shop-slot={item.id}
+                  aria-hidden="true"
+                  className="pointer-events-none h-[290px] w-full shrink-0 md:h-[296px]"
                 />
-              </motion.div>
+
+                <h2 className="mt-4 font-editorial text-[32px] font-normal leading-[34px] tracking-[-0.02em] text-[var(--fg)]">
+                  {item.title}
+                </h2>
+                <p className="mt-2 font-ui text-[16px] font-semibold leading-[22px] text-[var(--fg-soft)] tabular-nums">
+                  {formatCurrency(item.priceCents)}
+                </p>
+
+                <div className="mt-3">
+                  <WaterButton
+                    label="Order"
+                    matchLabel="Continue"
+                    shape="puddle"
+                    scale={1}
+                    active={isSelected || isHovered}
+                    onClick={() => handleCheckout(item.id)}
+                  />
+                </div>
+              </div>
             );
           })}
         </div>
 
-        {noticePack && (
-          <p className="font-ui text-[13px] leading-relaxed text-[#f6f5f1]/58">
-            Connect Stripe Payment Link env variables for {noticePack} to open
-            hosted checkout directly.
+        {noticeItem && (
+          <p className="pointer-events-auto mt-6 text-center font-ui text-[14px] leading-[20px] text-[var(--fg-muted)]">
+            Set the Stripe Payment Link environment variable for {noticeItem} to
+            open hosted checkout directly.
           </p>
         )}
       </div>

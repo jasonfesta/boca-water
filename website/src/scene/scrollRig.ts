@@ -3,6 +3,7 @@ import type {
   BottleScrollSection,
   PackMode,
   SceneViewMode,
+  ScienceHotspotId,
   ScrollKeyframe,
   ScrollState,
 } from './types';
@@ -20,16 +21,18 @@ export const BOTTLE_SCROLL_KEYFRAMES: readonly ScrollKeyframe[] = [
   {
     at: 0.0,
     section: 'hero',
-    bottlePos: [0.64, 0.02, 0.0],
-    bottleRot: [0.04, -0.18, -0.03],
-    bottleScale: 1.01,
-    cameraPos: [0.0, 0.10, 4.46],
-    cameraTarget: [0.16, 0.02, 0.0],
+    // Dramatic right-leaning diagonal (-0.30 rad) filling the right-side hero space
+    bottlePos: [0.76, 0.00, 0.06],
+    bottleRot: [0.04, -0.18, -0.30],
+    bottleScale: 1.18,
+    cameraPos: [0.0, 0.10, 4.30],
+    cameraTarget: [0.20, 0.00, 0.0],
     cameraFov: 34,
   },
   {
     at: 1 / 3,
     section: 'silhouette',
+    // Beat 2 preserved verbatim (large sculptural top-left close-up)
     bottlePos: [-0.62, 0.28, 0.42],
     bottleRot: [0.22, 2.55, -0.16],
     bottleScale: 1.32,
@@ -40,35 +43,38 @@ export const BOTTLE_SCROLL_KEYFRAMES: readonly ScrollKeyframe[] = [
   {
     at: 2 / 3,
     section: 'bubbles',
-    bottlePos: [0.26, 0.38, 0.10],
-    bottleRot: [0.06, 0.0, -Math.PI / 2],
-    bottleScale: 1.04,
-    cameraPos: [0.0, 0.12, 4.20],
-    cameraTarget: [0.08, 0.12, 0.0],
+    // 100% horizontally perfect (exact 90 deg level, zero tilt) lifted into top-center
+    // shrunk 10% (0.90) for generous airy clearance above Beat 3's pushed-down text & puddle buttons
+    bottlePos: [0.0, 0.72, 0.0],
+    bottleRot: [0.0, 0.0, -Math.PI / 2],
+    bottleScale: 0.90,
+    cameraPos: [0.0, 0.72, 4.30],
+    cameraTarget: [0.0, 0.24, 0.0],
     cameraFov: 34,
   },
   {
     at: 1.0,
     section: 'pack',
-    bottlePos: [-0.74, -0.02, 0.0],
-    bottleRot: [0.05, 0.24, 0.04],
-    bottleScale: 0.80,
-    cameraPos: [0.0, 0.10, 4.55],
-    cameraTarget: [-0.18, 0.0, 0.0],
+    // Middle-left channel between top-left BOCA WATER logo and right-aligned 'Live in the clear.'
+    bottlePos: [-0.68, -0.06, 0.20],
+    bottleRot: [0.10, -0.18, 0.16],
+    bottleScale: 1.02,
+    cameraPos: [0.0, 0.12, 4.35],
+    cameraTarget: [-0.10, 0.0, 0.0],
     cameraFov: 34,
   },
 ];
 
-/** Dedicated Shop view pose (left side of viewport, opposite the 3 Shop pack options on the right) */
+/** Dedicated Shop view camera framing all 3 side-by-side real 3D formations (1 / 6 / 24) in center-upper 20-52% */
 const SHOP_POSE: ScrollKeyframe = {
   at: 1.0,
   section: 'pack',
-  bottlePos: [-0.62, -0.02, 0.0],
-  bottleRot: [0.05, -0.22, 0.02],
-  bottleScale: 0.96,
-  cameraPos: [0.0, 0.12, 4.45],
-  cameraTarget: [-0.16, 0.0, 0.0],
-  cameraFov: 35,
+  bottlePos: [0.0, 0.0, 0.0],
+  bottleRot: [0.0, 0.0, 0.0],
+  bottleScale: 1.0,
+  cameraPos: [0.0, 0.25, 8.6],
+  cameraTarget: [0.0, -0.04, 0.0],
+  cameraFov: 34,
 };
 
 export interface SampledPose {
@@ -81,6 +87,46 @@ export interface SampledPose {
   section: BottleScrollSection;
   sectionProgress: number;
 }
+
+const MOBILE_Y_OFFSETS: readonly number[] = [-0.04, 0.82, 0.08, -0.04];
+const MOBILE_SCALE_FACTORS: readonly number[] = [
+  1.06 / 1.18,
+  0.68,
+  0.96,
+  1.12 / 1.02,
+];
+const MOBILE_Z_BOOSTS: readonly number[] = [1.05, 1.45, 1.45, 1.05];
+
+/** Dramatic macro camera close-up poses for Science Stop 2 interactive 3D hotspots */
+const SCIENCE_HOTSPOT_CAMERAS: Record<
+  ScienceHotspotId,
+  {
+    cameraPos: readonly [number, number, number];
+    target: readonly [number, number, number];
+    rotY: number;
+  }
+> = {
+  lid: {
+    cameraPos: [-0.55, 1.38, 1.85],
+    target: [0.08, 0.96, 0.0],
+    rotY: -0.22,
+  },
+  formula: {
+    cameraPos: [0.58, 0.62, 1.78],
+    target: [-0.06, 0.50, 0.0],
+    rotY: 0.14,
+  },
+  vessel: {
+    cameraPos: [-0.62, 0.08, 1.92],
+    target: [0.08, 0.02, 0.0],
+    rotY: -0.18,
+  },
+  punt: {
+    cameraPos: [0.56, -0.78, 1.88],
+    target: [-0.06, -0.84, 0.0],
+    rotY: 0.16,
+  },
+};
 
 /** C2-continuous quintic easing for silky, non-chaotic stop-to-stop glides */
 function smootherstep(t: number): number {
@@ -114,12 +160,31 @@ export function evaluateScrollPose(
   const eased = smootherstep(localT);
 
   const isNarrow = aspect < 0.95;
+  const isPortraitMobile = aspect < 0.75;
   const xScale = isNarrow ? 0.14 : 1.0;
-  const zBoost = isNarrow ? 1.05 : 0.0;
+
+  const nextIdx = Math.min(idx + 1, frames.length - 1);
+  const zBoost = isPortraitMobile
+    ? THREE.MathUtils.lerp(MOBILE_Z_BOOSTS[idx], MOBILE_Z_BOOSTS[nextIdx], eased)
+    : isNarrow
+      ? 1.05
+      : 0.0;
+  const mobileYOffset = isPortraitMobile
+    ? THREE.MathUtils.lerp(MOBILE_Y_OFFSETS[idx], MOBILE_Y_OFFSETS[nextIdx], eased)
+    : isNarrow
+      ? smootherstep(1 - Math.abs(p - 2 / 3) / 0.22) * 0.08
+      : 0;
+  const mobileScaleFactor = isPortraitMobile
+    ? THREE.MathUtils.lerp(
+        MOBILE_SCALE_FACTORS[idx],
+        MOBILE_SCALE_FACTORS[nextIdx],
+        eased
+      )
+    : 1.0;
 
   out.bottlePos.set(
     THREE.MathUtils.lerp(a.bottlePos[0], b.bottlePos[0], eased) * xScale,
-    THREE.MathUtils.lerp(a.bottlePos[1], b.bottlePos[1], eased),
+    THREE.MathUtils.lerp(a.bottlePos[1], b.bottlePos[1], eased) + mobileYOffset,
     THREE.MathUtils.lerp(a.bottlePos[2], b.bottlePos[2], eased)
   );
 
@@ -130,7 +195,8 @@ export function evaluateScrollPose(
     'ZXY'
   );
 
-  out.bottleScale = THREE.MathUtils.lerp(a.bottleScale, b.bottleScale, eased);
+  out.bottleScale =
+    THREE.MathUtils.lerp(a.bottleScale, b.bottleScale, eased) * mobileScaleFactor;
 
   out.cameraPos.set(
     THREE.MathUtils.lerp(a.cameraPos[0], b.cameraPos[0], eased) * xScale,
@@ -161,6 +227,10 @@ export interface ScrollChoreographyRig {
   setPointer: (x: number, y: number) => void;
   /** Add interactive drag spin impulse (radians) */
   addDragDelta: (dxRad: number, dyRad: number) => void;
+  /** Notify rig when pointer drag starts or releases (enables silky inertial coast on release) */
+  setDragging: (dragging: boolean) => void;
+  /** Sync smoothed stage transform from an external animation (e.g. opening loader) to prevent 1-frame snaps */
+  syncFromStage: (stagePivot: THREE.Object3D, camTarget?: THREE.Vector3) => void;
   /** Advance smoothing, spring oscillation, view transitions, and apply transforms */
   update: (
     time: number,
@@ -170,7 +240,11 @@ export interface ScrollChoreographyRig {
     aspect: number,
     activePackMode?: PackMode,
     packExpanded?: boolean,
-    viewMode?: SceneViewMode
+    viewMode?: SceneViewMode,
+    storyScrollProgress?: number,
+    directReturn?: boolean,
+    activeHotspot?: ScienceHotspotId | null,
+    isMobileViewport?: boolean
   ) => ScrollState;
 }
 
@@ -196,16 +270,49 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
 
   let dragYaw = 0;
   let dragPitch = 0;
+  let dragVelYaw = 0;
+  let dragVelPitch = 0;
+  let isUserDragging = false;
+  let lastDragTime = 0;
   let prevSmoothed = 0;
 
   // Beat 3 hypnotic slow axial spin accumulator
   let beat3AxialSpin = 0;
 
-  // Smooth view-mode transition choreography ('home' | 'shop' | 'about')
+  // Smooth view-mode transition choreography ('home' | 'shop' | 'science' | 'story')
   let lastViewMode: SceneViewMode = 'home';
-  let shopEntryTimer = 1.0; // 0 -> 0.42s glide off-screen, then slowly re-enter as pack
-  let exitLiftY = 0; // 0 = on stage, -4.6 = glided cleanly off bottom of viewport
+  let shopEntryTimer = 1.0;
+  let exitLiftY = 0;
   let exitShiftX = 0;
+  let storySmoothed = 0;
+
+  // Calm, cinema-smooth direct glide state (Beat 4 -> Beat 1 `directReturn`, zero wild spin/orbit)
+  let wasDirectReturn = false;
+  let orbitActive = false;
+  let orbitElapsed = 0;
+  const ORBIT_DURATION = 1.15;
+  const orbitStartPos = new THREE.Vector3();
+  const orbitStartQuat = new THREE.Quaternion();
+  const orbitEndQuat = new THREE.Quaternion();
+  const orbitEndEuler = new THREE.Euler(0, 0, 0, 'ZXY');
+  const orbitEndPos = new THREE.Vector3();
+  const orbitStartCamPos = new THREE.Vector3();
+  const orbitEndCamPos = new THREE.Vector3();
+  let orbitStartScale = 1;
+  const orbitStartCamTarget = new THREE.Vector3();
+  let orbitStartFov = 34;
+  let orbitTargetProgress = 0;
+  const currentCamTarget = new THREE.Vector3(0.2, 0, 0);
+  const heroTargetPose: SampledPose = {
+    bottlePos: new THREE.Vector3(),
+    bottleRot: new THREE.Euler(0, 0, 0, 'ZXY'),
+    bottleScale: 1,
+    cameraPos: new THREE.Vector3(),
+    cameraTarget: new THREE.Vector3(),
+    cameraFov: 34,
+    section: 'hero',
+    sectionProgress: 0,
+  };
 
   const pose: SampledPose = {
     bottlePos: new THREE.Vector3(),
@@ -216,6 +323,29 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
     cameraFov: 34,
     section: 'hero',
     sectionProgress: 0,
+  };
+
+  // Continuous smoothed 3D stage transform (zero single-frame snaps across Home <-> Shop <-> Science <-> Design)
+  const smoothedPos = new THREE.Vector3();
+  const smoothedQuat = new THREE.Quaternion();
+  let smoothedScale = 1.0;
+  let hasSmoothedPose = false;
+  let viewTransitionTimer = 0;
+  const desiredPos = new THREE.Vector3();
+  const desiredEuler = new THREE.Euler(0, 0, 0, 'ZXY');
+  const desiredQuat = new THREE.Quaternion();
+
+  const syncFromStage = (
+    stagePivot: THREE.Object3D,
+    camTarget?: THREE.Vector3
+  ) => {
+    smoothedPos.copy(stagePivot.position);
+    smoothedQuat.copy(stagePivot.quaternion);
+    smoothedScale = stagePivot.scale.x || 1;
+    hasSmoothedPose = true;
+    if (camTarget) {
+      currentCamTarget.copy(camTarget);
+    }
   };
 
   const setRawProgress = (raw: number) => {
@@ -233,9 +363,27 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
     targetPointerY = cy;
   };
 
+  const setDragging = (dragging: boolean) => {
+    isUserDragging = dragging;
+    if (dragging) {
+      lastDragTime = performance.now();
+      dragVelYaw = 0;
+      dragVelPitch = 0;
+    }
+  };
+
   const addDragDelta = (dxRad: number, dyRad: number) => {
+    const now = performance.now();
+    const dtSec = Math.max(0.004, Math.min((now - lastDragTime) / 1000, 0.08));
+    lastDragTime = now;
+
     dragYaw += dxRad;
     dragPitch = THREE.MathUtils.clamp(dragPitch + dyRad, -0.65, 0.65);
+
+    const instVelYaw = THREE.MathUtils.clamp(dxRad / dtSec, -10, 10);
+    const instVelPitch = THREE.MathUtils.clamp(dyRad / dtSec, -5, 5);
+    dragVelYaw = THREE.MathUtils.lerp(dragVelYaw, instVelYaw, 0.35);
+    dragVelPitch = THREE.MathUtils.lerp(dragVelPitch, instVelPitch, 0.35);
   };
 
   const update = (
@@ -246,23 +394,164 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
     aspect: number,
     activePackMode: PackMode = '1-pack',
     packExpanded = false,
-    viewMode: SceneViewMode = 'home'
+    viewMode: SceneViewMode = 'home',
+    storyScrollProgress = 0,
+    directReturn = false,
+    activeHotspot: ScienceHotspotId | null = null,
+    isMobileViewport = aspect < 0.75
   ): ScrollState => {
     const clampedDt = Math.max(0.001, Math.min(dt, 0.045));
+    const isStoryView =
+      viewMode === 'story' ||
+      viewMode === 'science' ||
+      viewMode === 'about' ||
+      viewMode === 'design';
 
-    // Detect view switches to trigger smooth exit -> slow enter choreography
+    // Detect view switches: keep live 3D bottle continuously damped with ZERO teleports or snaps!
     if (viewMode !== lastViewMode) {
+      viewTransitionTimer = 1.15;
+      orbitActive = false;
       if (viewMode === 'shop') {
         shopEntryTimer = 0;
+      } else if (viewMode === 'home') {
+        const targetP = THREE.MathUtils.clamp(state.rawProgress, 0, 1);
+        beat3AxialSpin = 0;
+        dragYaw = 0;
+        dragPitch = 0;
+        dragVelYaw = 0;
+        dragVelPitch = 0;
+        state.progress = targetP;
+        prevSmoothed = targetP;
+      } else if (isStoryView) {
+        dragYaw = 0;
+        dragPitch = 0;
+        dragVelYaw = 0;
+        dragVelPitch = 0;
+        const targetStoryInit =
+          viewMode === 'design' ? 1 : THREE.MathUtils.clamp(storyScrollProgress, 0, 1);
+        storySmoothed = targetStoryInit;
+        // Clamp deep Shop exitLiftY (-9.5) so Shop -> Design rises briskly into center without lingering low
+        if (exitLiftY < -3.2) {
+          exitLiftY = -3.2;
+        }
       }
       lastViewMode = viewMode;
+    }
+    if (viewTransitionTimer > 0) {
+      viewTransitionTimer = Math.max(0, viewTransitionTimer - clampedDt);
     }
     if (viewMode === 'shop') {
       shopEntryTimer = Math.min(1.5, shopEntryTimer + clampedDt);
     }
 
-    // Silky, fluid, non-chaotic scroll chase
-    const scrollAlpha = 1 - Math.exp(-clampedDt * 7.5);
+    // Trigger calm, cinema-smooth direct glide on Beat 4 -> Beat 1 `directReturn` (shortest-angle slerp, zero crazy orbit)
+    if (directReturn && !wasDirectReturn) {
+      orbitActive = true;
+      orbitElapsed = 0;
+      orbitTargetProgress = 0;
+      orbitStartPos.copy(stagePivot.position);
+      orbitStartQuat.copy(stagePivot.quaternion);
+      orbitStartScale = stagePivot.scale.x || 1;
+      orbitStartCamPos.copy(camera.position);
+      orbitStartCamTarget.copy(currentCamTarget);
+      orbitStartFov = camera.fov;
+      exitLiftY = 0;
+      exitShiftX = 0;
+      beat3AxialSpin = 0;
+      dragYaw = 0;
+      dragPitch = 0;
+      dragVelYaw = 0;
+      dragVelPitch = 0;
+      state.progress = 0;
+      state.rawProgress = 0;
+      state.velocity = 0;
+      prevSmoothed = 0;
+    }
+    wasDirectReturn = directReturn;
+
+    // Cancel return glide gracefully if user actively scrolls away mid-flight
+    if (
+      orbitActive &&
+      !directReturn &&
+      Math.abs(state.rawProgress - orbitTargetProgress) > 0.06
+    ) {
+      orbitActive = false;
+    }
+
+    if (orbitActive && viewMode === 'home') {
+      orbitElapsed = Math.min(ORBIT_DURATION, orbitElapsed + clampedDt);
+      const tNorm = smootherstep(orbitElapsed / ORBIT_DURATION);
+      const targetP = directReturn ? 0 : orbitTargetProgress;
+      evaluateScrollPose(targetP, heroTargetPose, aspect);
+
+      state.progress = targetP;
+      if (directReturn) state.rawProgress = 0;
+      state.velocity = 0;
+      state.section = heroTargetPose.section;
+      state.sectionProgress = heroTargetPose.sectionProgress;
+
+      // Match live resting idle breath + pointer offset at tNorm = 1 so exit has 0.000 jump
+      const heroFloatY = Math.sin(time * 0.90) * 0.016;
+      const heroIdleYaw = Math.sin(time * 0.38) * 0.032;
+      const heroIdleRoll = Math.cos(time * 0.52) * 0.008;
+
+      orbitEndPos.set(
+        heroTargetPose.bottlePos.x,
+        heroTargetPose.bottlePos.y + heroFloatY,
+        heroTargetPose.bottlePos.z
+      );
+      orbitEndEuler.set(
+        heroTargetPose.bottleRot.x + state.pointerY * 0.085,
+        heroTargetPose.bottleRot.y + heroIdleYaw + state.pointerX * 0.20,
+        heroTargetPose.bottleRot.z + heroIdleRoll - state.pointerX * 0.04,
+        'ZXY'
+      );
+      orbitEndQuat.setFromEuler(orbitEndEuler);
+
+      stagePivot.rotation.order = 'ZXY';
+      stagePivot.position.lerpVectors(orbitStartPos, orbitEndPos, tNorm);
+      stagePivot.quaternion.slerpQuaternions(orbitStartQuat, orbitEndQuat, tNorm);
+      stagePivot.scale.setScalar(
+        THREE.MathUtils.lerp(orbitStartScale, heroTargetPose.bottleScale, tNorm)
+      );
+
+      // Calm, direct camera glide straight back to Beat 1 (zero wild orbit or radial swoop)
+      orbitEndCamPos.set(
+        heroTargetPose.cameraPos.x + state.pointerX * 0.08,
+        heroTargetPose.cameraPos.y - state.pointerY * 0.045,
+        heroTargetPose.cameraPos.z
+      );
+      camera.position.lerpVectors(orbitStartCamPos, orbitEndCamPos, tNorm);
+      currentCamTarget.lerpVectors(orbitStartCamTarget, heroTargetPose.cameraTarget, tNorm);
+      camera.lookAt(currentCamTarget);
+
+      const nextFov = THREE.MathUtils.lerp(orbitStartFov, heroTargetPose.cameraFov, tNorm);
+      if (Math.abs(camera.fov - nextFov) > 0.02) {
+        camera.fov = nextFov;
+        camera.updateProjectionMatrix();
+      }
+
+      if (orbitElapsed >= ORBIT_DURATION && !directReturn) {
+        orbitActive = false;
+      }
+      smoothedPos.copy(stagePivot.position);
+      smoothedQuat.copy(stagePivot.quaternion);
+      smoothedScale = stagePivot.scale.x || 1;
+      hasSmoothedPose = true;
+      return state;
+    }
+
+    // Smooth, responsive bidirectional damping on Science (0.0) <-> Design (1.0) 2-swipe flow
+    const rawStoryTarget =
+      viewMode === 'design' ? 1 : THREE.MathUtils.clamp(storyScrollProgress, 0, 1);
+    storySmoothed = THREE.MathUtils.lerp(
+      storySmoothed,
+      rawStoryTarget,
+      1 - Math.exp(-clampedDt * 7.5)
+    );
+
+    // Silky, velvety scroll chase
+    const scrollAlpha = 1 - Math.exp(-clampedDt * 6.2);
     state.progress = THREE.MathUtils.lerp(
       state.progress,
       state.rawProgress,
@@ -295,11 +584,34 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
       1.2
     );
 
-    const dragDecay = Math.exp(-clampedDt * (0.5 + Math.abs(state.velocity) * 2.4));
-    dragYaw *= dragDecay;
-    dragPitch *= dragDecay;
+    // Weighted glass-in-oil drag physics: silky inertial coast on release, zero jerk-back!
+    if (!isUserDragging) {
+      dragVelYaw *= Math.exp(-clampedDt * 2.6);
+      dragVelPitch *= Math.exp(-clampedDt * 3.5);
+      dragYaw += dragVelYaw * clampedDt;
+      dragPitch = THREE.MathUtils.clamp(
+        dragPitch + dragVelPitch * clampedDt,
+        -0.65,
+        0.65
+      );
+
+      // Keep dragYaw wrapped cleanly in [-PI, PI] and apply only ultra-soft settle
+      // (zero abrupt yank back to 0; gently eases back if user scrolls to a new beat)
+      dragYaw = Math.atan2(Math.sin(dragYaw), Math.cos(dragYaw));
+      const yawSettleRate = isStoryView
+        ? 0.08 + Math.abs(storyScrollProgress - storySmoothed) * 0.9
+        : 0.20 + Math.abs(state.velocity) * 1.4;
+      dragYaw *= Math.exp(-clampedDt * yawSettleRate);
+
+      // Pitch glides softly back toward level via critically damped decay
+      dragPitch *= Math.exp(-clampedDt * 1.15);
+    }
 
     const isNarrow = aspect < 0.95;
+    const isPortraitMobile = aspect < 0.75;
+
+    const isMacroZoom = false;
+    void activeHotspot;
 
     if (viewMode === 'shop') {
       const xScale = isNarrow ? 0.14 : 1.0;
@@ -316,19 +628,91 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
         'ZXY'
       );
       pose.bottleScale = SHOP_POSE.bottleScale;
-      pose.cameraPos.set(
-        SHOP_POSE.cameraPos[0] * xScale,
-        SHOP_POSE.cameraPos[1],
-        SHOP_POSE.cameraPos[2] + zBoost
-      );
-      pose.cameraTarget.set(
-        SHOP_POSE.cameraTarget[0] * xScale,
-        SHOP_POSE.cameraTarget[1],
-        SHOP_POSE.cameraTarget[2]
-      );
+      if (isPortraitMobile) {
+        // Mobile portrait (< 768px): frame vertically stacked 1 / 6 / 24 real 3D formations cleanly
+        pose.cameraPos.set(0.0, 0.15, 5.2);
+        pose.cameraTarget.set(0.0, 0.0, 0.0);
+      } else {
+        // Desktop (>= 768px): untouched 3-column horizontal trio framing
+        pose.cameraPos.set(
+          SHOP_POSE.cameraPos[0] * xScale,
+          SHOP_POSE.cameraPos[1],
+          SHOP_POSE.cameraPos[2] + zBoost
+        );
+        pose.cameraTarget.set(
+          SHOP_POSE.cameraTarget[0] * xScale,
+          SHOP_POSE.cameraTarget[1],
+          SHOP_POSE.cameraTarget[2]
+        );
+      }
       pose.cameraFov = SHOP_POSE.cameraFov;
       pose.section = 'pack';
       pose.sectionProgress = 1;
+    } else if (isStoryView) {
+      // Unified 2-Swipe Science (0.0) <-> Design (1.0) Choreography:
+      // - Swipe 1 (0.0, Science): bottle smoothly tucked below off-screen.
+      // - Swipe 2 (1.0, Design):
+      //   * Desktop (>= 768px): bold commanding horizontal bottle (scale 1.24, ~76% viewport width),
+      //     dead-centered below header (y = -0.10), HORIZONTAL (z = -PI/2 so "BOCA" reads left-to-right, right-side-up!).
+      //   * Mobile (< 768px): larger centered upright bottle (scale 0.71), dead-centered below header (y = -0.08),
+      //     VERTICAL upright (z = 0) with balanced top & bottom breathing room.
+      const isHorizontalDesign = !isMobileViewport;
+      const zBoost = isPortraitMobile ? 0.85 : isNarrow ? 0.55 : 0.0;
+      const bottleY = isHorizontalDesign ? -0.10 : -0.08;
+      const bottleScale = isHorizontalDesign ? 1.24 : 0.71;
+      const designRollZ = isHorizontalDesign ? -Math.PI / 2 : 0.0;
+
+      pose.bottlePos.set(0.0, bottleY, 0.0);
+      pose.bottleScale = bottleScale;
+
+      if (isMacroZoom && activeHotspot) {
+        const hs = SCIENCE_HOTSPOT_CAMERAS[activeHotspot];
+        pose.bottleRot.set(
+          0.0,
+          (isHorizontalDesign ? hs.rotY * 0.65 : hs.rotY) + Math.sin(time * 0.45) * 0.045,
+          designRollZ,
+          'ZXY'
+        );
+        if (isHorizontalDesign) {
+          // Bottle rotated -90 deg around Z: local +Y maps to world +X (lid on right, punt on left).
+          // Lift zoomed horizontal bottle cleanly into the upper band so lower-left floating editorial text
+          // sits over 100% pure open canvas with zero collision.
+          const featureX = hs.target[1] * bottleScale;
+          const sideOffsetX =
+            activeHotspot === 'lid' || activeHotspot === 'formula' ? 0.28 : -0.28;
+          pose.cameraPos.set(featureX + sideOffsetX, bottleY - 0.42, 3.55);
+          pose.cameraTarget.set(featureX, bottleY - 0.92, 0.0);
+          pose.cameraFov = 31;
+        } else {
+          // Mobile vertical macro zoom: frame feature cleanly in upper 60% completely above bottom floating text
+          const mobileZoomZ = 1.35;
+          const mobileTargetShiftY = -0.95;
+          pose.cameraPos.set(
+            hs.cameraPos[0] * 0.35,
+            hs.cameraPos[1] * bottleScale + bottleY - 0.36,
+            hs.cameraPos[2] + mobileZoomZ
+          );
+          pose.cameraTarget.set(
+            0.0,
+            hs.target[1] * bottleScale + bottleY + mobileTargetShiftY,
+            hs.target[2]
+          );
+          pose.cameraFov = 32;
+        }
+      } else {
+        const storyTurn = (storySmoothed - 1.0) * Math.PI * 0.45;
+        pose.bottleRot.set(
+          0.0,
+          (isHorizontalDesign ? 0.0 : -0.18) + storyTurn,
+          designRollZ,
+          'ZXY'
+        );
+        pose.cameraPos.set(0.0, 0.0, 4.35 + zBoost);
+        pose.cameraTarget.set(0.0, 0.0, 0.0);
+        pose.cameraFov = 34;
+      }
+      pose.section = 'hero';
+      pose.sectionProgress = storySmoothed;
     } else {
       evaluateScrollPose(state.progress, pose, aspect);
     }
@@ -338,12 +722,20 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
     state.packMode = activePackMode;
     state.packExpanded = packExpanded;
 
-    // Smooth exit/enter glide for 'about' (off-screen) and 'shop' (exit -> slow enter)
-    const shouldBeOffScreen =
-      viewMode === 'about' || (viewMode === 'shop' && shopEntryTimer < 0.42);
-    const targetExitY = shouldBeOffScreen ? -4.8 : 0;
-    const targetExitX = viewMode === 'about' ? 1.15 : 0;
-    const exitSpeed = shouldBeOffScreen ? 4.8 : 2.9; // Smooth exit, slow elegant enter
+    // Smooth off-screen glide:
+    // - 'shop': hero can glides smoothly off-screen while ShopTrioShowcase owns the stage
+    // - 'science' (0.0) <-> 'design' (1.0): tucked cleanly below at 0.0, dead-center at 1.0
+    const storyEnter = isStoryView
+      ? smootherstep((storySmoothed - 0.12) / 0.78)
+      : 1.0;
+    const targetExitY =
+      viewMode === 'shop'
+        ? -9.5
+        : isStoryView
+          ? (1 - storyEnter) * -4.6
+          : 0;
+    const targetExitX = 0;
+    const exitSpeed = viewMode === 'shop' ? 5.6 : isStoryView ? 8.2 : 4.2;
     exitLiftY = THREE.MathUtils.lerp(
       exitLiftY,
       targetExitY,
@@ -355,21 +747,32 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
       1 - Math.exp(-clampedDt * exitSpeed)
     );
 
-    // Beat 3 (p = 2/3) hypnotic slow axial spin showing both 'BOCA' and 'water' turning fluidly
-    const distFromBeat3 = Math.abs(state.progress - 2 / 3);
+    // Beat 3 (p = 2/3) & Beat 4 (p = 1.0) smooth C2-enveloped hypnotic axial spin (BOCA <-> WATER)
+    // Wide smootherstep envelopes guarantee zero lock-state jumping across desktop & mobile,
+    // and shortest-angle decay unwinds Beat 4 -> Beat 1 like silk with zero jerk.
     const beat3Weight =
       viewMode === 'home'
-        ? Math.max(0, 1 - distFromBeat3 / 0.18)
+        ? smootherstep(1 - Math.abs(state.progress - 2 / 3) / 0.22)
         : 0;
-    if (beat3Weight > 0.01) {
-      beat3AxialSpin += clampedDt * 0.46 * beat3Weight;
+    const beat4Weight =
+      viewMode === 'home'
+        ? smootherstep(1 - Math.abs(state.progress - 1.0) / 0.22)
+        : 0;
+    const spinWeight = Math.max(beat3Weight, beat4Weight);
+
+    // Keep axial spin wrapped cleanly in [-PI, PI] at all times so unwinding NEVER jumps
+    beat3AxialSpin = Math.atan2(
+      Math.sin(beat3AxialSpin),
+      Math.cos(beat3AxialSpin)
+    );
+    if (spinWeight > 0.35 && Math.abs(state.velocity) < 0.45) {
+      beat3AxialSpin += clampedDt * 0.44 * spinWeight;
     } else {
-      // Settle axial spin gently back to 0 when leaving Beat 3
-      const wrapped = Math.atan2(Math.sin(beat3AxialSpin), Math.cos(beat3AxialSpin));
+      const unwindRate = 3.2 + Math.abs(state.velocity) * 4.5;
       beat3AxialSpin = THREE.MathUtils.lerp(
-        wrapped,
+        beat3AxialSpin,
         0,
-        1 - Math.exp(-clampedDt * 4.5)
+        1 - Math.exp(-clampedDt * unwindRate)
       );
     }
 
@@ -394,37 +797,67 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
       packScale = packExpanded ? 0.84 : 0.88;
     }
 
-    const floatY = Math.sin(time * 0.90) * 0.016;
-    const idleYaw = Math.sin(time * 0.38) * 0.032 * (1 - beat3Weight);
-    const idleRoll = Math.cos(time * 0.52) * 0.008;
+    // Keep Beat 3 100% mathematically horizontal (suppress idleRoll & pointer tilt on Beat 3);
+    // give the upright Science/Story bottle a subtle organic living oscillation
+    const levelLock = 1 - beat3Weight;
+    const floatY = isStoryView
+      ? Math.sin(time * 0.85) * 0.024
+      : Math.sin(time * 0.90) * 0.016;
+    const idleYaw = isStoryView
+      ? Math.sin(time * 0.52) * 0.048
+      : Math.sin(time * 0.38) * 0.032 * (1 - spinWeight);
+    const idleRoll = isStoryView
+      ? Math.cos(time * 0.60) * 0.014
+      : Math.cos(time * 0.52) * 0.008 * levelLock;
 
     // 'ZXY' Euler order applies local Y (axial spin) FIRST, then pitch X, then sideways roll Z,
-    // so Beat 3's horizontal can spins cleanly along its own length axis with zero tumble!
-    stagePivot.rotation.order = 'ZXY';
-    stagePivot.position.set(
+    // so horizontal cans (Beat 3 & Desktop Design) roll cleanly along their own length axis with zero tumble!
+    const isDesktopHorizontalDesign = isStoryView && !isMobileViewport;
+    const designLevelLock = isDesktopHorizontalDesign ? 0 : levelLock;
+    desiredPos.set(
       pose.bottlePos.x + exitShiftX,
       pose.bottlePos.y + floatY + exitLiftY,
       pose.bottlePos.z
     );
-
-    stagePivot.rotation.set(
-      pose.bottleRot.x + packPitch + state.pointerY * 0.085 + dragPitch,
+    desiredEuler.set(
+      pose.bottleRot.x + packPitch + state.pointerY * 0.085 * designLevelLock + dragPitch,
       pose.bottleRot.y + packYaw + idleYaw + beat3AxialSpin + state.pointerX * 0.20 + dragYaw,
-      pose.bottleRot.z + idleRoll - state.pointerX * 0.04,
+      pose.bottleRot.z + (isDesktopHorizontalDesign ? 0 : idleRoll) - state.pointerX * 0.04 * designLevelLock,
       'ZXY'
     );
+    desiredQuat.setFromEuler(desiredEuler);
+    const desiredScale = pose.bottleScale * packScale;
 
-    stagePivot.scale.setScalar(pose.bottleScale * packScale);
+    if (!hasSmoothedPose) {
+      smoothedPos.copy(desiredPos);
+      smoothedQuat.copy(desiredQuat);
+      smoothedScale = desiredScale;
+      hasSmoothedPose = true;
+    } else {
+      const poseRate = viewTransitionTimer > 0 ? 5.2 : isStoryView ? 6.8 : 11.5;
+      const poseAlpha = 1 - Math.exp(-clampedDt * poseRate);
+      smoothedPos.lerp(desiredPos, poseAlpha);
+      smoothedQuat.slerp(desiredQuat, poseAlpha);
+      smoothedScale = THREE.MathUtils.lerp(smoothedScale, desiredScale, poseAlpha);
+    }
+
+    stagePivot.rotation.order = 'ZXY';
+    stagePivot.position.copy(smoothedPos);
+    stagePivot.quaternion.copy(smoothedQuat);
+    stagePivot.scale.setScalar(smoothedScale);
 
     const desiredCamX = pose.cameraPos.x + state.pointerX * 0.08;
     const desiredCamY = pose.cameraPos.y + packExtraY - state.pointerY * 0.045;
     const desiredCamZ = pose.cameraPos.z + packExtraZ;
 
+    const camLerpRate = viewTransitionTimer > 0 ? 5.2 : isStoryView ? 4.8 : 7.0;
+    const camAlpha = 1 - Math.exp(-clampedDt * camLerpRate);
     camera.position.lerp(
       pose.cameraPos.set(desiredCamX, desiredCamY, desiredCamZ),
-      1 - Math.exp(-clampedDt * 7.0)
+      camAlpha
     );
-    camera.lookAt(pose.cameraTarget);
+    currentCamTarget.lerp(pose.cameraTarget, camAlpha);
+    camera.lookAt(currentCamTarget);
 
     const desiredFov =
       activePackMode === '24-pack' ? 38 : activePackMode === '6-pack' ? 36 : pose.cameraFov;
@@ -432,7 +865,7 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
       camera.fov = THREE.MathUtils.lerp(
         camera.fov,
         desiredFov,
-        1 - Math.exp(-clampedDt * 7.0)
+        camAlpha
       );
       camera.updateProjectionMatrix();
     }
@@ -445,6 +878,8 @@ export function createScrollChoreographyRig(): ScrollChoreographyRig {
     setRawProgress,
     setPointer,
     addDragDelta,
+    setDragging,
+    syncFromStage,
     update,
   };
 }

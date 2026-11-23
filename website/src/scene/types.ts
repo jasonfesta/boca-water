@@ -22,9 +22,33 @@ export type WordmarkCase = 'title' | 'upper' | 'lower';
 export type PackMode = '1-pack' | '6-pack' | '24-pack';
 
 /**
- * Active top-level page view driving 3D stage enter/exit choreography.
+ * All 6 interactive 3D Shop catalog items (Row 1 water trio + Row 2 apparel trio).
  */
-export type SceneViewMode = 'home' | 'shop' | 'about';
+export type ShopItemId = PackMode | 'shirt' | 'hat' | 'hoodie';
+
+/**
+ * Interactive 3D macro hotspot IDs on Science Stop 2 (storyScrollProgress = 0.5).
+ */
+export type ScienceHotspotId = 'lid' | 'formula' | 'vessel' | 'punt';
+
+export interface HotspotScreenPoint {
+  x: number;
+  y: number;
+  visible: boolean;
+}
+
+export type ScienceHotspotPositions = Record<ScienceHotspotId, HotspotScreenPoint>;
+
+/**
+ * Active top-level page view driving 3D stage enter/exit choreography.
+ * ('about' and 'science' are supported alongside 'story' for clean compatibility.)
+ */
+export type SceneViewMode = 'home' | 'shop' | 'story' | 'science' | 'about' | 'design';
+
+/**
+ * Active studio lighting & backdrop theme (starts in 'dark' by default).
+ */
+export type SceneTheme = 'dark' | 'light';
 
 /**
  * Real-time scroll + pointer state shared across the vessel rig,
@@ -49,6 +73,10 @@ export interface ScrollState {
   packMode?: PackMode;
   /** Whether the 6-pack or 24-pack is currently puffed/unraveled outward in 3D */
   packExpanded?: boolean;
+  /** Active theme ('dark' | 'light') */
+  theme?: SceneTheme;
+  /** Smoothly damped 1 (dark) -> 0 (light) blend factor (Orbs 3D pattern) */
+  darkMix?: number;
 }
 
 export type LightingPreset = 'studio-dark' | 'ice-rim' | 'dramatic-edge';
@@ -70,9 +98,11 @@ export interface BottleLightingRig {
   /** PMREM studio scrim environment map assigned to scene.environment */
   envMap: THREE.Texture;
   /** Per-frame update to sweep studio scrim highlights as the vessel spins */
-  update: (time: number, scroll: ScrollState) => void;
+  update: (time: number, scroll: ScrollState, theme?: SceneTheme) => void;
   /** Optional runtime preset switch */
   setPreset?: (preset: LightingPreset) => void;
+  /** Optional runtime Dark / Light theme switch */
+  setTheme?: (theme: SceneTheme) => void;
   /** Clean GPU disposal */
   dispose: () => void;
 }
@@ -80,6 +110,10 @@ export interface BottleLightingRig {
 export interface BackdropOptions {
   /** Subtle dark Orb-inspired shaded aesthetic (no purple hues) */
   intensity?: number;
+  /** Optional WebGLRenderer for 256x256 ping-pong FBO shallow-water ripple PDE simulation */
+  renderer?: THREE.WebGLRenderer;
+  /** Initial studio theme ('dark' | 'light') */
+  theme?: SceneTheme;
 }
 
 /**
@@ -93,8 +127,11 @@ export interface BackdropHandle {
   update: (
     time: number,
     scroll: ScrollState,
-    viewport: { width: number; height: number }
+    viewport: { width: number; height: number },
+    theme?: SceneTheme
   ) => void;
+  /** Optional runtime Dark / Light theme switch */
+  setTheme?: (theme: SceneTheme) => void;
   /** Clean GPU disposal */
   dispose: () => void;
 }
@@ -192,6 +229,8 @@ export const DEFAULT_BOTTLE_TUNE_PARAMS: BottleTuneParams = {
 export interface BottleSceneProps {
   /** Optional external 0..1 scroll progress. If omitted, tracks window scroll automatically. */
   scrollProgress?: number;
+  /** Optional mutable ref for zero-React-rerender 60fps scroll progress (takes precedence over scrollProgress when provided) */
+  scrollProgressRef?: { readonly current: number };
   /** Optional callback whenever the active scroll chapter updates */
   onSectionChange?: (section: BottleScrollSection, progress: number) => void;
   /** Serif font family for the vertical wordmark on the can */
@@ -205,21 +244,47 @@ export interface BottleSceneProps {
     fontFamily: string,
     textCase?: WordmarkCase
   ) => HTMLCanvasElement;
-  /** Optional two-sided factory rendering front ('BOCA') & back ('water') vertical canvases */
+  /** Optional two-sided factory rendering front ('BOCA') & back ('WATER') vertical canvases */
   renderWordmarkSideCanvas?: (
     side: 'front' | 'back',
-    fontFamily?: string
+    fontFamily?: string,
+    existingCanvas?: HTMLCanvasElement,
+    color?: string
   ) => HTMLCanvasElement;
   /** Studio lighting preset */
   lightingPreset?: LightingPreset;
-  /** Active page view: 'home' (4-beat scroll), 'shop' (1/6/24-pack showcase), 'about' (can glides off-screen) */
+  /** Studio theme: 'dark' (default) or 'light' (Orbs warm gallery white) */
+  theme?: SceneTheme;
+  /** Toggle hot-stamped 24k reflective metallic gold foil bottle wordmark (default: false) */
+  goldWordmark?: boolean;
+  /** Active page view: 'home' (4-beat scroll), 'shop' (3-column 3D trio), 'story' (vertical turning can on scroll) */
   viewMode?: SceneViewMode;
+  /** Normalized 0..1 scroll progress inside the Story/Science view (drives vertical can rise & bidirectional 360-deg spin) */
+  storyScrollProgress?: number;
+  /** Optional mutable ref for zero-React-rerender Science/Story scroll progress */
+  storyScrollProgressRef?: { readonly current: number };
+  /** Normalized 0..1 vertical scroll progress inside mobile Shop (< 768px) to align Single / Six-Pack / Case 3D formations */
+  shopScrollProgress?: number;
+  /** Optional mutable ref for zero-React-rerender mobile Shop scroll progress */
+  shopScrollProgressRef?: { readonly current: number };
+  /** When true, smoothly glides directly from current pose (e.g. Beat 4) to Beat 1 in one calm S-curve arc without passing through Beat 3/2 */
+  directReturn?: boolean;
   /** Interactive 3D pack formation ('1-pack' solo, '6-pack' 2x3, '24-pack' 4x6) */
   packMode?: PackMode;
+  /** Currently hovered Shop item (Row 1 water packs or Row 2 apparel) for 3D hover lift & turn */
+  hoveredPack?: ShopItemId | null;
   /** When true, 6-pack / 24-pack puffs and unravels outward in 3D space with spring physics */
   packExpanded?: boolean;
   /** Callback when the user taps/clicks the 3D can or pack (distinguished from drag-to-spin) */
   onCanTap?: () => void;
+  /** Callback fired as the centered opening bottle finishes filling (~1.25s) and glides into Beat 1 Hero */
+  onIntroComplete?: () => void;
+  /** Active Science Stop 2 hotspot for smooth 3D macro camera zoom (null = full centered bottle) */
+  activeHotspot?: ScienceHotspotId | null;
+  /** Mutable ref updated per-frame with 3D-projected screen pixel coordinates of the 4 Science hotspots (0 React re-renders) */
+  hotspotPositionsRef?: { current: ScienceHotspotPositions };
+  /** Optional callback receiving projected Science hotspot screen coordinates */
+  onHotspotPositions?: (positions: ScienceHotspotPositions) => void;
   /** Enable subtle pointer spring oscillation and drag-to-spin inspection (default: true) */
   interactive?: boolean;
   /** Optional parameter overrides for render-comparison tuning passes */

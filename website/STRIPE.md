@@ -1,31 +1,27 @@
 # Boca Water — Stripe Payment Links Setup (Zero Backend)
 
-Boca Water is a **pure static Vite frontend** on Vercel targeting **3 direct Stripe Payment Links** — one each for **1-Pack**, **6-Pack**, and **24-Pack**. No backend server or secret keys are required in the app.
+Boca Water is a **pure static Vite frontend** on Vercel targeting **3 live Stripe Payment Links** — one each for **1-Pack**, **6-Pack**, and **24-Pack**. No backend server or secret keys are required.
 
-## 1. Environment Variables
+## 1. Live Products, Prices & Payment Links
 
-Add these 3 public Payment Link URLs to `website/.env.local` (for local dev) and **Vercel → Project Settings → Environment Variables** (with **Root Directory: `website`**):
+| Pack | Product Name | Bottles (12 fl oz / 355 ml) | Price | Per Bottle | Savings | Live Stripe Payment Link |
+| :--- | :--- | ---: | ---: | ---: | ---: | :--- |
+| **1-Pack** | `1 Boca Water` | 1 | **$19.99** | $19.99 | — | `https://buy.stripe.com/dRm14g1g1fz6fGle4u6Vq01` |
+| **6-Pack** | `6 pack of Boca Water` | 6 | **$99.99** | $16.67 | 17% | `https://buy.stripe.com/eVq8wI1g1aeM1Pvf8y6Vq00` |
+| **24-Pack** | `24 case of Boca Water` | 24 | **$199.99** | $8.33 | 58% | `https://buy.stripe.com/9B628k4sdgDabq53pQ6Vq02` |
+
+## 2. Environment Variable Overrides (Optional)
+
+The live URLs above are wired as defaults in `src/commerce/stripeClient.ts`. To override them per environment in `website/.env.local` or **Vercel → Project Settings → Environment Variables** (**Root Directory: `website`**):
 
 ```bash
-VITE_STRIPE_PAYMENT_LINK_1PACK=https://buy.stripe.com/...
-VITE_STRIPE_PAYMENT_LINK_6PACK=https://buy.stripe.com/...
-VITE_STRIPE_PAYMENT_LINK_24PACK=https://buy.stripe.com/...
+VITE_STRIPE_PAYMENT_LINK_1PACK=https://buy.stripe.com/dRm14g1g1fz6fGle4u6Vq01
+VITE_STRIPE_PAYMENT_LINK_6PACK=https://buy.stripe.com/eVq8wI1g1aeM1Pvf8y6Vq00
+VITE_STRIPE_PAYMENT_LINK_24PACK=https://buy.stripe.com/9B628k4sdgDabq53pQ6Vq02
 ```
-
-## 2. Creating the 3 Payment Links in Stripe
-
-Create 3 Payment Links in the **Boca Water** Stripe Dashboard (enable **Let customers adjust quantity** and **Collect shipping address** on each):
-
-| Pack | Cans (12 fl oz / 355 ml) | Price | Env Variable |
-| :--- | ---: | ---: | :--- |
-| **1-Pack** (Single Can) | 1 | $4.50 | `VITE_STRIPE_PAYMENT_LINK_1PACK` |
-| **6-Pack** (The Six-Pack) | 6 | $24.00 | `VITE_STRIPE_PAYMENT_LINK_6PACK` |
-| **24-Pack** (The Case) | 24 | $84.00 | `VITE_STRIPE_PAYMENT_LINK_24PACK` |
-
-*(Optional: you can also auto-create all 3 Products, Prices, and Payment Links in one command from your terminal using `STRIPE_SECRET_KEY=sk_test_... node src/commerce/server-example/setup-stripe-products.mjs`.)*
 
 ## 3. Deploy on Vercel
 
 1. Import `jasonfesta/boca-water` on Vercel.
 2. Set **Root Directory** to `website` (`website/vercel.json` is pre-configured for static Vite SPA).
-3. Paste the 3 `VITE_STRIPE_PAYMENT_LINK_*` variables and deploy.
+3. Deploy — all 3 packs route directly to their verified `buy.stripe.com` checkout pages.

@@ -8,6 +8,8 @@ import {
 export interface SparklingWaterSystem {
   /** Root group placed inside the sleek 12 fl oz PET can assembly */
   group: THREE.Group;
+  /** Set normalized water fill level (0 = empty at base punt, 1 = full waterline) for opening fill loader */
+  setFillLevel: (level: number) => void;
   /** Animate nucleation streams, wall carbonation, meniscus slosh, and Orka headspace air-pocket */
   update: (time: number, dt: number, scroll: ScrollState) => void;
   /** Dispose GPU resources */
@@ -29,8 +31,11 @@ interface RisingBubbleSeed {
 }
 
 interface WallBubbleSeed {
-  angle: number;
   yNorm: number;
+  x: number;
+  y: number;
+  z: number;
+  edgeStretchY: number;
   radius: number;
   phase: number;
   shimmerFreq: number;
@@ -45,6 +50,18 @@ interface CrownBubbleSeed {
   radius: number;
   phase: number;
   onAirPocket: boolean;
+}
+
+interface DrippingBeadSeed {
+  cosA: number;
+  sinA: number;
+  yaw: number;
+  yNorm: number;
+  baseSpeed: number;
+  slipFreq: number;
+  slipPhase: number;
+  radius: number;
+  trailLen: number;
 }
 
 /**
@@ -308,6 +325,7 @@ function createOrkaAirPocketBoundaryMaterial(): THREE.ShaderMaterial {
     uniforms: {
       uSpecColor: { value: new THREE.Color('#ffffff') },
       uTintColor: { value: new THREE.Color('#dbeeff') },
+      uOpacityScale: { value: 1.0 },
     },
     vertexShader: /* glsl */ `
       varying vec3 vNormalView;
@@ -325,6 +343,7 @@ function createOrkaAirPocketBoundaryMaterial(): THREE.ShaderMaterial {
       precision highp float;
       uniform vec3 uSpecColor;
       uniform vec3 uTintColor;
+      uniform float uOpacityScale;
       varying vec3 vNormalView;
       varying vec3 vViewDir;
       varying vec3 vLocalPos;
@@ -334,23 +353,22 @@ function createOrkaAirPocketBoundaryMaterial(): THREE.ShaderMaterial {
         vec3 V = normalize(vViewDir);
         float ndv = clamp(abs(dot(N, V)), 0.0, 1.0);
 
-        // True 3D view-dependent grazing TIR meniscus rim (smooth at every rotation)
-        float fresnelRim = pow(1.0 - ndv, 2.35);
-        float crispEdge = smoothstep(0.45, 0.92, 1.0 - ndv);
-        float softBody = pow(1.0 - ndv, 1.35) * 0.20;
+        // True 3D view-dependent grazing TIR meniscus rim (delicate, zero milky fill)
+        float fresnelRim = pow(1.0 - ndv, 3.0);
+        float crispEdge = smoothstep(0.60, 0.94, 1.0 - ndv);
 
         // Dual studio catchlights (upper-left & upper-right studio scrims)
         vec3 L1 = normalize(vec3(-0.42, 0.78, 0.46));
         vec3 L2 = normalize(vec3(0.52, 0.68, 0.52));
-        float spec1 = pow(max(dot(reflect(-L1, N), V), 0.0), 42.0);
-        float spec2 = pow(max(dot(reflect(-L2, N), V), 0.0), 32.0) * 0.65;
+        float spec1 = pow(max(dot(reflect(-L1, N), V), 0.0), 48.0);
+        float spec2 = pow(max(dot(reflect(-L2, N), V), 0.0), 36.0) * 0.55;
 
         // Soft fade right at the flat top cap where the dome merges into the waterline
-        float topFade = smoothstep(-0.002, -0.022, vLocalPos.y);
+        float topFade = smoothstep(-0.002, -0.014, vLocalPos.y);
 
-        float luminance = (fresnelRim * 0.78 + crispEdge * 0.34 + softBody + (spec1 + spec2) * 0.85) * topFade;
+        float luminance = (fresnelRim * 0.52 + crispEdge * 0.24 + (spec1 + spec2) * 0.62) * topFade;
         vec3 col = mix(uTintColor, uSpecColor, clamp(crispEdge * 0.85 + spec1 + spec2, 0.0, 1.0));
-        float alpha = clamp(luminance * 0.72 + 0.02 * topFade, 0.0, 0.82);
+        float alpha = clamp(luminance * 0.42, 0.0, 0.40) * uOpacityScale;
 
         gl_FragColor = vec4(col, alpha);
       }
@@ -377,6 +395,8 @@ function createPhotorealBubbleMaterial(
     uniforms: {
       uInnerRadius: { value: innerBodyR },
       uTint: { value: new THREE.Color('#f7fbff') },
+      uBeat2Focus: { value: 0.0 },
+      uDarkMix: { value: 1.0 },
     },
     vertexShader: /* glsl */ `
       varying vec3 vNormalView;
@@ -412,6 +432,8 @@ function createPhotorealBubbleMaterial(
     fragmentShader: /* glsl */ `
       precision highp float;
       uniform vec3 uTint;
+      uniform float uBeat2Focus;
+      uniform float uDarkMix;
       varying vec3 vNormalView;
       varying vec3 vViewDir;
       varying vec3 vInstanceColor;
@@ -422,34 +444,39 @@ function createPhotorealBubbleMaterial(
         vec3 V = normalize(vViewDir);
         float ndv = clamp(abs(dot(N, V)), 0.0, 1.0);
 
+        // Beat 2 close-up macro visibility & catchlight boost (+42% crisp optical presence)
+        float focusBoost = 1.0 + uBeat2Focus * 0.42;
+
         // 1. Air-in-water TIR critical-angle rim (thin bright optical contour, hollow center)
         float tirRim = pow(1.0 - ndv, 3.1);
         float sharpRing = smoothstep(0.56, 0.90, 1.0 - ndv) * smoothstep(1.0, 0.94, 1.0 - ndv);
 
-        // 2. Photographic dark lower-hemisphere shadow rim (reflected dark obsidian void)
+        // 2. Photographic dark lower-hemisphere shadow rim (reflected dark void / crisp light-mode refraction)
         float lowerMask = smoothstep(0.15, -0.78, N.y);
         float darkCrescent = lowerMask * smoothstep(0.18, 0.72, 1.0 - ndv) * (1.0 - sharpRing * 0.65);
+        float lightModeRim = (1.0 - uDarkMix) * (tirRim * 0.52 + sharpRing * 0.36);
 
         // 3. Razor-sharp pinpoint upper studio catchlights + inverted bottom internal caustic
         vec3 L1 = normalize(vec3(-0.36, 0.80, 0.48));
         vec3 L2 = normalize(vec3(0.58, 0.62, 0.52));
-        float spec1 = pow(max(dot(reflect(-L1, N), V), 0.0), 68.0);
-        float spec2 = pow(max(dot(reflect(-L2, N), V), 0.0), 42.0) * 0.55;
+        float spec1 = pow(max(dot(reflect(-L1, N), V), 0.0), 64.0);
+        float spec2 = pow(max(dot(reflect(-L2, N), V), 0.0), 40.0) * 0.58;
         // Internal refraction caustic spot near the lower pole
-        float bottomCaustic = smoothstep(-0.42, -0.88, N.y) * pow(ndv, 1.4) * 0.42;
+        float bottomCaustic = smoothstep(-0.42, -0.88, N.y) * pow(ndv, 1.4) * 0.45;
 
         // 4. Subtle curved-PET-wall grazing luminance boost near outer silhouette
-        float edgeLift = mix(0.86, 1.38, pow(vRadialEdge, 1.35));
+        float edgeLift = mix(0.88, 1.40, pow(vRadialEdge, 1.3));
 
-        float bright = (tirRim * 0.95 + sharpRing * 0.52 + (spec1 * 1.95 + spec2 * 1.1) + bottomCaustic) * edgeLift;
+        float bright = (tirRim * 0.96 + sharpRing * 0.54 + (spec1 * 2.0 + spec2 * 1.15) + bottomCaustic) * edgeLift * focusBoost;
 
-        // Blend dark lower-hemisphere lensing shadow with crisp colorless white highlights
-        vec3 litColor = uTint * vInstanceColor * (0.98 + spec1 * 0.65);
-        vec3 shadowColor = vec3(0.03, 0.04, 0.055);
-        float highlightMix = clamp(bright / max(bright + darkCrescent * 0.85, 0.001), 0.0, 1.0);
+        // Blend crisp dark lensing shadow (enhanced in Light Mode so bubbles read clearly on white) with pure white highlights
+        vec3 litColor = uTint * vInstanceColor * (0.98 + spec1 * 0.68);
+        vec3 shadowColor = mix(vec3(0.12, 0.15, 0.19), vec3(0.03, 0.04, 0.055), uDarkMix);
+        float darkWeight = (darkCrescent * mix(1.05, 0.85, uDarkMix) + lightModeRim) * focusBoost;
+        float highlightMix = clamp(bright / max(bright + darkWeight, 0.001), 0.0, 1.0);
         vec3 color = mix(shadowColor, litColor, highlightMix);
 
-        float alpha = clamp(bright * 0.92 + darkCrescent * 0.58, 0.0, 0.96);
+        float alpha = clamp(bright * 0.92 + darkWeight * mix(0.76, 0.58, uDarkMix), 0.0, 0.97);
         gl_FragColor = vec4(color, alpha);
       }
     `,
@@ -460,13 +487,70 @@ function createPhotorealBubbleMaterial(
 }
 
 /**
- * Refractive chilled condensation water-bead shader for micro-droplets clinging
- * to the ice-cold can wall (inspired by Orka reference photo 2).
+ * Builds an organic 3D flattened teardrop water-drip dome (bulbous lower head
+ * tapering smoothly upward into a pointed wet tail) oriented with +Z pointing
+ * radially outward from the can wall and +Y pointing up along the cylinder axis.
+ */
+function buildTeardropDripGeometry(): THREE.BufferGeometry {
+  const segU = 18;
+  const segV = 14;
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+
+  for (let iv = 0; iv <= segV; iv++) {
+    const v = iv / segV; // 0 = bottom bulbous tip, 1 = upper tapered tail tip
+    // Vertical span: bulbous head sits around y in [-1.0 .. +0.3], tail reaches +1.65
+    const y = THREE.MathUtils.lerp(-1.0, 1.65, v);
+    // Asymmetric teardrop width profile: full rounded belly at v ~ 0.28, slim tail toward v = 1
+    const belly = Math.sin(Math.pow(v, 0.72) * Math.PI);
+    const tailTaper = Math.pow(Math.max(0, 1 - v), 0.55);
+    const halfWidth = belly * (0.62 + 0.45 * tailTaper);
+    // Outward dome height (deepest at bulbous lower head, thinning into surface along tail)
+    const domeDepth = belly * (0.34 + 0.30 * tailTaper);
+
+    for (let iu = 0; iu <= segU; iu++) {
+      const u = iu / segU; // 0..1 across semicircle from -X to +X
+      const phi = u * Math.PI; // 0 .. PI
+      const x = -Math.cos(phi) * halfWidth;
+      const z = Math.sin(phi) * domeDepth; // >= 0 outward from wall
+      positions.push(x, y, z);
+      uvs.push(u, v);
+    }
+  }
+
+  const stride = segU + 1;
+  for (let iv = 0; iv < segV; iv++) {
+    for (let iu = 0; iu < segU; iu++) {
+      const a = iv * stride + iu;
+      const b = a + 1;
+      const c = a + stride;
+      const d = c + 1;
+      indices.push(a, b, c);
+      indices.push(b, d, c);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Refractive chilled condensation water-bead shader for outer surface micro-beads
+ * and gravity-dripping teardrops sitting ON TOP of the clear PET wall & BOCA/WATER logo.
+ * Supports both Dark Mode and Light Mode via uDarkMix with crisp dark bottom contact
+ * refraction + razor upper studio catchlight + lower convex-lens caustic focus.
  */
 function createCondensationDropletMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: {
-      uWaterTint: { value: new THREE.Color('#eef7ff') },
+      uWaterTint: { value: new THREE.Color('#f4faff') },
+      uDarkMix: { value: 1.0 },
+      uOpacityScale: { value: 1.0 },
     },
     vertexShader: /* glsl */ `
       varying vec3 vNormalView;
@@ -498,6 +582,8 @@ function createCondensationDropletMaterial(): THREE.ShaderMaterial {
     fragmentShader: /* glsl */ `
       precision highp float;
       uniform vec3 uWaterTint;
+      uniform float uDarkMix;
+      uniform float uOpacityScale;
       varying vec3 vNormalView;
       varying vec3 vViewDir;
       varying vec3 vInstanceColor;
@@ -507,19 +593,79 @@ function createCondensationDropletMaterial(): THREE.ShaderMaterial {
         vec3 V = normalize(vViewDir);
         float ndv = clamp(abs(dot(N, V)), 0.0, 1.0);
 
-        // Crisp droplet Fresnel ring + upper specular glint + lower caustic glow
-        float rim = pow(1.0 - ndv, 2.15);
-        vec3 keyDir = normalize(vec3(-0.38, 0.78, 0.50));
-        float topSpec = pow(max(dot(reflect(-keyDir, N), V), 0.0), 32.0);
-        float bottomCaustic = smoothstep(0.18, -0.72, N.y) * pow(1.0 - ndv, 1.15) * 0.56;
+        // 1. Crisp optical water-bead Fresnel contour
+        float rim = pow(1.0 - ndv, 2.25);
 
-        vec3 col = uWaterTint * vInstanceColor * (0.98 + topSpec * 0.92 + bottomCaustic * 0.68);
-        float alpha = clamp((rim * 0.76 + topSpec * 1.25 + bottomCaustic * 0.76) * 0.88, 0.0, 0.94);
+        // 2. Pinpoint upper-left studio specular catchlight + convex-lens bottom caustic focus
+        vec3 keyDir = normalize(vec3(-0.36, 0.80, 0.48));
+        vec3 fillDir = normalize(vec3(0.54, 0.58, 0.60));
+        float topSpec = pow(max(dot(reflect(-keyDir, N), V), 0.0), 52.0);
+        float sideSpec = pow(max(dot(reflect(-fillDir, N), V), 0.0), 32.0) * 0.45;
+        float bottomCaustic = smoothstep(0.05, -0.78, N.y) * pow(1.0 - ndv, 0.85) * 0.68;
+
+        // 3. Dark bottom refraction / contact shadow crescent (makes drops visibly sit ON TOP of BOCA/WATER!)
+        float contactShadow = smoothstep(0.28, -0.68, N.y) * smoothstep(0.12, 0.72, 1.0 - ndv) * 0.85;
+        float lightEdge = (1.0 - uDarkMix) * rim * 0.65;
+
+        float bright = (rim * mix(0.54, 0.96, uDarkMix) + topSpec * 2.15 + sideSpec * 1.15 + bottomCaustic * 1.18);
+        float darkW = (contactShadow * mix(1.24, 0.92, uDarkMix) + lightEdge * 1.22);
+
+        vec3 litCol = uWaterTint * vInstanceColor * (1.02 + topSpec * 0.92 + bottomCaustic * 0.52);
+        vec3 darkCol = mix(vec3(0.09, 0.12, 0.16), vec3(0.02, 0.03, 0.045), uDarkMix);
+        float mixT = clamp(bright / max(bright + darkW, 0.001), 0.0, 1.0);
+        vec3 col = mix(darkCol, litCol, mixT);
+
+        float alpha = clamp(bright * 0.96 + darkW * mix(0.84, 0.72, uDarkMix), 0.0, 0.97) * uOpacityScale;
         gl_FragColor = vec4(col, alpha);
       }
     `,
     transparent: true,
     depthWrite: false,
+    blending: THREE.NormalBlending,
+  });
+}
+
+/**
+ * Ultra-subtle glistening wet slip-trail ribbon left behind each gravity-dripping bead.
+ */
+function createDripTrailMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uDarkMix: { value: 1.0 },
+      uOpacityScale: { value: 1.0 },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        #ifdef USE_INSTANCING
+          vec4 localInstPos = instanceMatrix * vec4(position, 1.0);
+        #else
+          vec4 localInstPos = vec4(position, 1.0);
+        #endif
+        gl_Position = projectionMatrix * modelViewMatrix * localInstPos;
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      precision highp float;
+      uniform float uDarkMix;
+      uniform float uOpacityScale;
+      varying vec2 vUv;
+      void main() {
+        // Tapered slim wet streak: strongest right behind the bead (vUv.y -> 0), fading gently upward
+        float xDist = abs(vUv.x - 0.5) * 2.0;
+        float widthMask = smoothstep(1.0, 0.12, xDist);
+        float yMask = smoothstep(1.0, 0.08, vUv.y) * smoothstep(0.0, 0.10, vUv.y);
+        // Subtle twin specular edges along the wet trail
+        float edgeSheen = smoothstep(0.25, 0.78, xDist) * widthMask;
+        vec3 col = mix(vec3(0.26, 0.31, 0.37), vec3(0.92, 0.96, 1.0), uDarkMix);
+        float alpha = clamp((widthMask * 0.20 + edgeSheen * 0.30) * yMask * mix(0.68, 0.88, uDarkMix), 0.0, 0.44) * uOpacityScale;
+        gl_FragColor = vec4(col, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.FrontSide,
     blending: THREE.NormalBlending,
   });
 }
@@ -631,10 +777,18 @@ export function createSparklingWaterSystem(
     depthWrite: false,
   });
 
+  const puntTopNorm = 0.088;
+  const puntTopY = baseY + H * puntTopNorm;
+  const waterColumnPivot = new THREE.Group();
+  waterColumnPivot.name = 'WaterColumnPivot';
+  waterColumnPivot.position.y = puntTopY;
+  group.add(waterColumnPivot);
+
   const liquidMesh = new THREE.Mesh(liquidGeo, liquidMaterial);
   liquidMesh.name = 'RefractiveWaterVolume';
+  liquidMesh.position.y = -puntTopY;
   liquidMesh.renderOrder = 1;
-  group.add(liquidMesh);
+  waterColumnPivot.add(liquidMesh);
 
   // 1b. Crisp Water-to-PET Edge Refraction Band (gives the filled liquid real optical boundary)
   const liquidWallH = H * (fillNorm - 0.108);
@@ -649,9 +803,9 @@ export function createSparklingWaterSystem(
   const liquidEdgeMat = createWaterEdgeRefractionMaterial();
   const liquidEdgeMesh = new THREE.Mesh(liquidEdgeGeo, liquidEdgeMat);
   liquidEdgeMesh.name = 'LiquidEdgeRefraction';
-  liquidEdgeMesh.position.y = baseY + H * 0.108 + liquidWallH * 0.5;
+  liquidEdgeMesh.position.y = baseY + H * 0.108 + liquidWallH * 0.5 - puntTopY;
   liquidEdgeMesh.renderOrder = 2;
-  group.add(liquidEdgeMesh);
+  waterColumnPivot.add(liquidEdgeMesh);
 
   // =========================================================================
   // 2. CONCAVE CAPILLARY MENISCUS & SIGNATURE ORKA TEARDROP AIR POCKET
@@ -733,29 +887,29 @@ export function createSparklingWaterSystem(
   meniscusDisc.renderOrder = 2;
   meniscusGroup.add(meniscusDisc);
 
-  // 2d. SIGNATURE ORKA TEARDROP HEADSPACE AIR POCKET (Photos 2 & 3)
-  // Smooth closed 3D rotationally symmetric inverted teardrop dome strictly bounded
-  // inside innerRadius * 0.72 so it has ZERO deformity or clipping from any 360° angle
-  const maxPocketR = Math.min(topR * 0.70, innerNeckR * 0.74);
-  const pocketDrop = H * 0.132;
+  // 2d. SLIM HEADSPACE AIR-POCKET MENISCUS DOME (strictly high in upper shoulder, clear of BOCA)
+  // Raised & slimmed (pocketDrop: 0.048H) with ultra-subtle translucent rim so it sits
+  // completely above the 'A' in BOCA with zero milky refraction overlap behind typography
+  const maxPocketR = Math.min(topR * 0.62, innerNeckR * 0.66);
+  const pocketDrop = H * 0.048;
   const airPocketGeo = buildOrkaTeardropAirPocketGeometry(
     maxPocketR,
     pocketDrop
   );
 
-  // Layer A: Physical specular dome catching real studio lighting strips
+  // Layer A: Ultra-subtle physical specular dome (no milky white dome fill)
   const airPocketPhysicalMat = new THREE.MeshPhysicalMaterial({
     color: new THREE.Color('#f7fbff'),
     transparent: true,
-    opacity: 0.11,
+    opacity: 0.045,
     roughness: 0.04,
     metalness: 0.0,
     ior: 1.333,
-    clearcoat: 0.65,
+    clearcoat: 0.45,
     clearcoatRoughness: 0.04,
-    specularIntensity: 0.85,
+    specularIntensity: 0.55,
     specularColor: new THREE.Color('#ffffff'),
-    envMapIntensity: 1.05,
+    envMapIntensity: 0.62,
     side: THREE.FrontSide,
     depthWrite: false,
   });
@@ -818,11 +972,11 @@ export function createSparklingWaterSystem(
   mistMesh.renderOrder = 2;
   group.add(mistMesh);
 
-  // 3b. Glistening Chilled Micro-Droplets clinging to the cold surface (Photo 2)
+  // 3b. Glistening Outer Chilled Micro-Beads sitting ON TOP of PET glass & BOCA/WATER logo
   const rand = createSeededRandom(20261122);
   const tmpColor = new THREE.Color();
-  const dropletCount = 135;
-  const dropletGeo = new THREE.SphereGeometry(1, 10, 8);
+  const dropletCount = 165;
+  const dropletGeo = new THREE.SphereGeometry(1, 14, 10);
   const dropletMat = createCondensationDropletMaterial();
   const dropletMesh = new THREE.InstancedMesh(
     dropletGeo,
@@ -830,25 +984,37 @@ export function createSparklingWaterSystem(
     dropletCount
   );
   dropletMesh.name = 'ChilledCondensationDroplets';
-  dropletMesh.renderOrder = 3;
+  // Render strictly ON TOP of PET outer shell and matte-satin BOCA/WATER wordmark stickers
+  dropletMesh.renderOrder = 14;
+  dropletMesh.frustumCulled = false;
 
   const dropDummy = new THREE.Object3D();
   const dropNormal = new THREE.Vector3();
   const upAxis = new THREE.Vector3(0, 1, 0);
   const dropQuat = new THREE.Quaternion();
+  const outerBeadR = params.bodyRadius + 0.0078;
 
   for (let i = 0; i < dropletCount; i++) {
-    const angle = rand() * Math.PI * 2;
-    // Concentrate droplets strictly on the chilled straight cylindrical body (zero shoulder overhang)
-    const yNorm = 0.12 + Math.pow(rand(), 0.92) * (Math.min(fillNorm - 0.025, 0.885) - 0.12);
-    const isHeroBead = rand() > 0.78;
-    const baseR = isHeroBead
-      ? 0.0052 + Math.pow(rand(), 1.55) * 0.0050
-      : 0.0022 + Math.pow(rand(), 1.75) * 0.0028;
+    // Bias ~45% of droplets across front (0 deg, BOCA) & back (180 deg, WATER) logo arcs
+    // so zoomed-in views clearly show chilled water beads sitting ON TOP of the typography
+    let angle: number;
+    if (i < Math.floor(dropletCount * 0.25)) {
+      angle = Math.PI * 0.5 + (rand() - 0.5) * 0.82; // front +Z logo arc (sin = +1)
+    } else if (i < Math.floor(dropletCount * 0.45)) {
+      angle = -Math.PI * 0.5 + (rand() - 0.5) * 0.82; // back -Z logo arc (sin = -1)
+    } else {
+      angle = rand() * Math.PI * 2;
+    }
 
-    const surfR = params.bodyRadius - 0.0016;
-    const x = Math.cos(angle) * surfR;
-    const z = Math.sin(angle) * surfR;
+    // Strictly on the chilled straight cylindrical body (zero shoulder overhang)
+    const yNorm = 0.118 + Math.pow(rand(), 0.94) * (Math.min(fillNorm - 0.03, 0.880) - 0.118);
+    const isHeroBead = rand() > 0.72;
+    const baseR = isHeroBead
+      ? 0.0056 + Math.pow(rand(), 1.45) * 0.0054
+      : 0.0022 + Math.pow(rand(), 1.7) * 0.0030;
+
+    const x = Math.cos(angle) * outerBeadR;
+    const z = Math.sin(angle) * outerBeadR;
     const y = baseY + yNorm * H;
 
     dropNormal.set(Math.cos(angle), 0, Math.sin(angle)).normalize();
@@ -856,19 +1022,73 @@ export function createSparklingWaterSystem(
 
     dropDummy.position.set(x, y, z);
     dropDummy.quaternion.copy(dropQuat);
-    // Flattened dome bead along surface normal (local Y after quaternion alignment)
-    const verticalStretch = isHeroBead ? 1.24 : 1.06;
-    dropDummy.scale.set(baseR, baseR * 0.42, baseR * verticalStretch);
+    // Flattened dome bead along outward radial normal (local Y after quaternion alignment)
+    const verticalStretch = isHeroBead ? 1.24 : 1.08;
+    dropDummy.scale.set(baseR, baseR * 0.46, baseR * verticalStretch);
     dropDummy.updateMatrix();
     dropletMesh.setMatrixAt(i, dropDummy.matrix);
 
-    const lum = 0.68 + rand() * 0.32;
-    tmpColor.setRGB(lum * 0.95, lum * 0.98, lum);
+    const lum = 0.74 + rand() * 0.26;
+    tmpColor.setRGB(lum * 0.96, lum * 0.99, lum);
     dropletMesh.setColorAt(i, tmpColor);
   }
   dropletMesh.instanceMatrix.needsUpdate = true;
   if (dropletMesh.instanceColor) dropletMesh.instanceColor.needsUpdate = true;
   group.add(dropletMesh);
+
+  // 3c. 16 Animated Gravity-Dripping Teardrop Water Beads + Slim Wet Slip-Trails
+  // Placed strictly outside the PET wall & BOCA/WATER wordmark (outerRadius + 0.009, renderOrder 14)
+  const dripCount = 16;
+  const dripGeo = buildTeardropDripGeometry();
+  const dripMesh = new THREE.InstancedMesh(dripGeo, dropletMat, dripCount);
+  dripMesh.name = 'DrippingWaterBeads';
+  dripMesh.renderOrder = 14;
+  dripMesh.frustumCulled = false;
+
+  const dripTrailGeo = new THREE.PlaneGeometry(1, 1);
+  // Shift pivot to bottom edge so the trail extends cleanly UPWARD behind the falling bead
+  dripTrailGeo.translate(0, 0.5, 0);
+  const dripTrailMat = createDripTrailMaterial();
+  const dripTrailMesh = new THREE.InstancedMesh(
+    dripTrailGeo,
+    dripTrailMat,
+    dripCount
+  );
+  dripTrailMesh.name = 'DrippingWaterTrails';
+  dripTrailMesh.renderOrder = 13;
+  dripTrailMesh.frustumCulled = false;
+
+  const dripSeeds: DrippingBeadSeed[] = [];
+  for (let i = 0; i < dripCount; i++) {
+    // Distribute 6 drips across front BOCA (+Z), 5 across back WATER (-Z), and 5 on sides
+    let angle: number;
+    if (i < 6) {
+      angle = Math.PI * 0.5 + ((i - 2.5) / 5.5) * 0.72 + (rand() - 0.5) * 0.08;
+    } else if (i < 11) {
+      angle = -Math.PI * 0.5 + ((i - 8.0) / 4.5) * 0.72 + (rand() - 0.5) * 0.08;
+    } else {
+      angle = rand() * Math.PI * 2;
+    }
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+    dripSeeds.push({
+      cosA,
+      sinA,
+      yaw: Math.atan2(cosA, sinA),
+      yNorm: 0.18 + rand() * 0.66,
+      baseSpeed: 0.011 + rand() * 0.012, // slow realistic gravity trickle
+      slipFreq: 0.45 + rand() * 0.55,
+      slipPhase: rand() * Math.PI * 2,
+      radius: 0.0075 + rand() * 0.0052,
+      trailLen: 0.09 + rand() * 0.14,
+    });
+    const lum = 0.82 + rand() * 0.18;
+    tmpColor.setRGB(lum * 0.96, lum * 0.99, lum);
+    dripMesh.setColorAt(i, tmpColor);
+  }
+  if (dripMesh.instanceColor) dripMesh.instanceColor.needsUpdate = true;
+  group.add(dripTrailMesh);
+  group.add(dripMesh);
 
   // =========================================================================
   // 4. AUTHENTIC SPARKLING EFFERVESCENCE (PHOTOREAL OPTICAL-LENSING BUBBLES)
@@ -886,6 +1106,7 @@ export function createSparklingWaterSystem(
   );
   crownMesh.name = 'MeniscusEffervescenceCrown';
   crownMesh.renderOrder = 3;
+  crownMesh.frustumCulled = false;
 
   const crownSeeds: CrownBubbleSeed[] = [];
   for (let i = 0; i < crownCount; i++) {
@@ -924,6 +1145,7 @@ export function createSparklingWaterSystem(
   );
   risingMesh.name = 'RisingSparklingBubbles';
   risingMesh.renderOrder = 2;
+  risingMesh.frustumCulled = false;
 
   const streamCount = 10;
   const streamSites: Array<{ angle: number; radialFactor: number; baseSpeed: number }> = [];
@@ -992,18 +1214,28 @@ export function createSparklingWaterSystem(
   );
   wallMesh.name = 'WallCarbonationBubbles';
   wallMesh.renderOrder = 2;
+  wallMesh.frustumCulled = false;
 
   const wallSeeds: WallBubbleSeed[] = [];
   for (let i = 0; i < wallCount; i++) {
     const isHeroPearl = rand() > 0.82;
     const sizeRoll = Math.pow(rand(), 2.6);
+    const angle = rand() * Math.PI * 2;
     const yNorm = 0.10 + Math.pow(rand(), 0.95) * (fillNorm - 0.13);
+    const radius = isHeroPearl
+      ? 0.0034 + Math.pow(rand(), 1.5) * 0.0030
+      : 0.00085 + sizeRoll * 0.0021;
+    const wallR =
+      sampleLiquidRadiusAtYNorm(yNorm, innerBodyR, innerNeckR) - radius * 0.75;
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
     wallSeeds.push({
-      angle: rand() * Math.PI * 2,
       yNorm,
-      radius: isHeroPearl
-        ? 0.0034 + Math.pow(rand(), 1.5) * 0.0030
-        : 0.00085 + sizeRoll * 0.0021,
+      x: cosA * wallR,
+      y: baseY + yNorm * H,
+      z: sinA * wallR,
+      edgeStretchY: 1.04 + Math.abs(cosA) * 0.08,
+      radius,
       phase: rand() * Math.PI * 2,
       shimmerFreq: 0.75 + rand() * 1.5,
     });
@@ -1017,9 +1249,12 @@ export function createSparklingWaterSystem(
   group.add(wallMesh);
 
   // =========================================================================
-  // 5. DAMPED 2ND-ORDER LIQUID SLOSH & AIR-POCKET BUOYANCY UPDATE
+  // 5. OPENING FILL-LEVEL CONTROLLER & DAMPED 2ND-ORDER LIQUID SLOSH UPDATE
   // =========================================================================
   const dummy = new THREE.Object3D();
+  let currentFillLevel = 1.0;
+  let activeFillNorm = fillNorm;
+  let activeTopR = topR;
   let smoothedVelocity = 0;
   let sloshX = 0;
   let sloshVelX = 0;
@@ -1027,6 +1262,45 @@ export function createSparklingWaterSystem(
   let sloshVelZ = 0;
   let pocketOffsetX = 0;
   let pocketOffsetZ = 0;
+
+  const setFillLevel = (level: number) => {
+    const clamped = THREE.MathUtils.clamp(level, 0, 1);
+    currentFillLevel = clamped;
+    activeFillNorm = THREE.MathUtils.lerp(puntTopNorm + 0.012, fillNorm, clamped);
+    const activeWaterY = baseY + H * activeFillNorm;
+    activeTopR = sampleLiquidRadiusAtYNorm(activeFillNorm, innerBodyR, innerNeckR);
+
+    // Smoothly scale the water column upward from the domed base punt
+    waterColumnPivot.visible = clamped > 0.004;
+    waterColumnPivot.scale.set(1, Math.max(0.004, clamped), 1);
+
+    // Ride the meniscus assembly directly on top of the rising waterline
+    meniscusGroup.visible = clamped > 0.008;
+    meniscusGroup.position.y = activeWaterY;
+    const radialScale = activeTopR / Math.max(topR, 0.001);
+    meniscusRing.scale.set(radialScale, 1, radialScale);
+    meniscusHalo.scale.set(radialScale, 1, radialScale);
+    meniscusDisc.scale.set(radialScale, 1, radialScale);
+
+    // Gently bloom Orka headspace air pocket as liquid reaches the upper shoulder (0.84 -> 1.0)
+    const pocketReveal = THREE.MathUtils.smoothstep(clamped, 0.84, 1.0);
+    airPocketPivot.visible = pocketReveal > 0.01;
+    airPocketPivot.scale.setScalar(0.55 + 0.45 * pocketReveal);
+    airPocketPhysicalMat.opacity = 0.045 * pocketReveal;
+    airPocketBoundaryMat.uniforms.uOpacityScale.value = pocketReveal;
+
+    // Gently condense outer chilled mist, micro-beads & dripping trails as can finishes filling (0.82 -> 1.0)
+    const chillReveal = THREE.MathUtils.smoothstep(clamped, 0.82, 1.0);
+    mistMesh.visible = chillReveal > 0.01;
+    mistMat.opacity = 0.115 * chillReveal;
+    dropletMat.uniforms.uOpacityScale.value = chillReveal;
+    dripTrailMat.uniforms.uOpacityScale.value = chillReveal;
+    dropletMesh.visible = chillReveal > 0.01;
+    dripMesh.visible = chillReveal > 0.01;
+    dripTrailMesh.visible = chillReveal > 0.01;
+  };
+
+  setFillLevel(1.0);
 
   const update = (time: number, dt: number, scroll: ScrollState) => {
     const clampedDt = Math.min(Math.max(dt, 0.001), 0.045);
@@ -1037,13 +1311,17 @@ export function createSparklingWaterSystem(
       1 - Math.exp(-clampedDt * 5.5)
     );
 
+    const isFilling = currentFillLevel < 0.96;
+    const fillFizz = isFilling ? Math.sin(currentFillLevel * Math.PI) : 0;
+
     // Tightly clamped 2nd-order damped slosh so meniscus & air pocket never clip outer PET wall
     const targetSloshX =
       THREE.MathUtils.clamp(smoothedVelocity * 0.018, -0.036, 0.036) -
       scroll.pointerY * 0.014 +
-      Math.sin(time * 1.1) * 0.004;
+      Math.sin(time * (isFilling ? 6.2 : 1.1)) * (0.004 + fillFizz * 0.018);
     const targetSloshZ =
-      -scroll.pointerX * 0.016 + Math.cos(time * 0.88) * 0.004;
+      -scroll.pointerX * 0.016 +
+      Math.cos(time * (isFilling ? 5.1 : 0.88)) * (0.004 + fillFizz * 0.016);
 
     const kSlosh = 18.0;
     const dSlosh = 5.4;
@@ -1073,10 +1351,12 @@ export function createSparklingWaterSystem(
     airPocketPivot.position.set(pocketOffsetX, 0, pocketOffsetZ);
 
     // Update meniscus crown pearls & micro-bubbles clinging around the 3D teardrop dome
+    const crownRadialScale = activeTopR / Math.max(topR, 0.001);
+    const pocketPearlScale = THREE.MathUtils.smoothstep(currentFillLevel, 0.84, 1.0);
     for (let i = 0; i < crownCount; i++) {
       const c = crownSeeds[i];
       const pulse = 0.90 + Math.sin(time * 1.3 + c.phase) * 0.11;
-      const s = c.radius * pulse;
+      const s = c.radius * pulse * (c.onAirPocket ? pocketPearlScale : 1.0 + fillFizz * 0.25);
       if (c.onAirPocket) {
         const rSurf = sampleAirPocketRadius(c.tArc, maxPocketR) * c.radialOffset;
         const theta = c.angle + time * 0.018;
@@ -1087,10 +1367,11 @@ export function createSparklingWaterSystem(
           pocketOffsetZ + Math.sin(theta) * rSurf
         );
       } else {
+        const rCrown = c.radialOffset * crownRadialScale;
         dummy.position.set(
-          Math.cos(c.angle + time * 0.022) * c.radialOffset,
+          Math.cos(c.angle + time * 0.022) * rCrown,
           c.yOffset + Math.sin(time * 1.2 + c.phase) * 0.0015,
-          Math.sin(c.angle + time * 0.022) * c.radialOffset
+          Math.sin(c.angle + time * 0.022) * rCrown
         );
       }
       dummy.scale.setScalar(s);
@@ -1100,21 +1381,88 @@ export function createSparklingWaterSystem(
     }
     crownMesh.instanceMatrix.needsUpdate = true;
 
-    const agitation = 1 + Math.min(Math.abs(smoothedVelocity) * 0.75, 1.8);
+    const agitation = 1 + Math.min(Math.abs(smoothedVelocity) * 0.75, 1.8) + fillFizz * 1.45;
 
-    // Update champagne-fine rising nucleation streams
+    // Smooth Beat 2 bell envelope (centered at scroll.progress ≈ 0.333: "From the mouth of the earth.")
+    // Energizes upward sparkling nucleation streams, buoyant swell & optical catchlights cleanly
+    const beat2Focus = Math.exp(-Math.pow((scroll.progress - 0.333) / 0.17, 2));
+    const darkMix =
+      typeof scroll.darkMix === 'number'
+        ? scroll.darkMix
+        : scroll.theme === 'light'
+          ? 0.0
+          : 1.0;
+    bubbleMaterial.uniforms.uBeat2Focus.value = Math.max(beat2Focus, fillFizz * 0.65);
+    bubbleMaterial.uniforms.uDarkMix.value = darkMix;
+    dropletMat.uniforms.uDarkMix.value = darkMix;
+    dripTrailMat.uniforms.uDarkMix.value = darkMix;
+
+    // Update 16 animated stick-slip gravity-dripping teardrop beads + slim wet trails
+    // Strictly outside the PET wall & BOCA/WATER wordmark (outerDripR = bodyRadius + 0.009)
+    const outerDripR = params.bodyRadius + 0.009;
+    const outerTrailR = params.bodyRadius + 0.0082;
+    const dripTopY = 0.872;
+    const dripBotY = 0.120;
+    for (let i = 0; i < dripCount; i++) {
+      const d = dripSeeds[i];
+      // Stick-slip gravity pulse: pauses briefly under surface tension, then glides downward
+      const slipWave = 0.5 + 0.5 * Math.sin(time * d.slipFreq + d.slipPhase);
+      const stickSlip = 0.18 + 0.82 * Math.pow(slipWave, 2.4);
+      d.yNorm -= d.baseSpeed * stickSlip * clampedDt;
+      if (d.yNorm <= dripBotY) {
+        d.yNorm = dripTopY - (dripBotY - d.yNorm) * 0.15;
+      }
+
+      const topFade = THREE.MathUtils.smoothstep(d.yNorm, dripTopY, dripTopY - 0.055);
+      const botFade = THREE.MathUtils.smoothstep(d.yNorm, dripBotY, dripBotY + 0.055);
+      const env = topFade * botFade;
+
+      // Orient outward (+Z of teardrop geometry -> radial normal on cylinder, precomputed trig)
+      const x = d.cosA * outerDripR;
+      const z = d.sinA * outerDripR;
+      const y = baseY + d.yNorm * H;
+
+      const s = d.radius * env;
+      // Subtle vertical stretch while actively gliding downward
+      const stretchY = 1.0 + stickSlip * 0.22;
+      dummy.position.set(x, y, z);
+      dummy.rotation.set(0, d.yaw, 0);
+      dummy.scale.set(s, s * stretchY, s);
+      dummy.updateMatrix();
+      dripMesh.setMatrixAt(i, dummy.matrix);
+
+      // Slim glistening wet trail extending upward behind the falling bead
+      const traveledH = Math.min(d.trailLen, Math.max(0.01, (dripTopY - d.yNorm) * H));
+      dummy.position.set(
+        d.cosA * outerTrailR,
+        y + s * 0.45,
+        d.sinA * outerTrailR
+      );
+      dummy.rotation.set(0, d.yaw, 0);
+      dummy.scale.set(d.radius * 0.62 * env, traveledH * env, 1);
+      dummy.updateMatrix();
+      dripTrailMesh.setMatrixAt(i, dummy.matrix);
+    }
+    dripMesh.instanceMatrix.needsUpdate = true;
+    dripTrailMesh.instanceMatrix.needsUpdate = true;
+
+    const beat2SpeedMul = 1.0 + beat2Focus * 0.85; // ~1.85x lively vertical ascent on Beat 2
+    const activeCeilingNorm = Math.max(puntTopNorm + 0.014, activeFillNorm - 0.008);
+
+    // Update champagne-fine rising nucleation streams (strictly bounded below rising waterline)
     for (let i = 0; i < risingCount; i++) {
       const b = risingSeeds[i];
-      b.yNorm += b.speed * agitation * clampedDt;
-      if (b.yNorm >= fillNorm - 0.008) {
-        b.yNorm = 0.078 + (b.yNorm - (fillNorm - 0.008)) * 0.25;
+      b.yNorm += b.speed * agitation * beat2SpeedMul * clampedDt;
+      if (b.yNorm >= activeCeilingNorm) {
+        const span = Math.max(0.02, activeCeilingNorm - 0.078);
+        b.yNorm = 0.078 + ((b.yNorm - activeCeilingNorm) % span) * 0.45;
       }
 
       const maxR =
         sampleLiquidRadiusAtYNorm(b.yNorm, innerBodyR, innerNeckR) - b.radius * 2.2;
       const r = Math.max(0.008, maxR * b.radialFactor);
 
-      const waveScale = b.isStream ? 0.055 : 0.12;
+      const waveScale = (b.isStream ? 0.055 : 0.12) * (1 + fillFizz * 0.65);
       const theta =
         b.angle + Math.sin(time * b.wobbleFreq + b.yNorm * 13.0 + b.phase) * waveScale;
       const wobbleR =
@@ -1124,11 +1472,19 @@ export function createSparklingWaterSystem(
       const z = Math.sin(theta) * wobbleR;
       const y = baseY + b.yNorm * H;
 
-      const buoyancyGrowth = 0.86 + 0.28 * ((b.yNorm - 0.078) / (fillNorm - 0.078));
-      const bottomFade = THREE.MathUtils.smoothstep(b.yNorm, 0.078, 0.122);
+      const riseFrac = THREE.MathUtils.clamp(
+        (b.yNorm - 0.078) / Math.max(activeCeilingNorm - 0.078, 0.01),
+        0,
+        1
+      );
+      const buoyancyGrowth = 0.86 + 0.28 * riseFrac;
+      // Subtle +15% buoyant radius swell on Beat 2 as bubbles climb toward the meniscus
+      const beat2Swell = 1.0 + beat2Focus * (0.11 + 0.10 * riseFrac) + fillFizz * 0.18;
+      const bottomFade = THREE.MathUtils.smoothstep(b.yNorm, 0.078, 0.112);
       const topFade =
-        1 - THREE.MathUtils.smoothstep(b.yNorm, fillNorm - 0.032, fillNorm - 0.005);
-      const scale = b.radius * buoyancyGrowth * bottomFade * topFade;
+        1 - THREE.MathUtils.smoothstep(b.yNorm, activeCeilingNorm - 0.024, activeCeilingNorm);
+      const fillVis = currentFillLevel > 0.02 ? 1.0 : 0.0;
+      const scale = b.radius * buoyancyGrowth * beat2Swell * bottomFade * topFade * fillVis;
 
       // Larger rising bubbles flatten slightly (oblate spheroid) from upward fluid drag
       const oblateY = b.radius > 0.0024 ? 0.93 : 1.04;
@@ -1145,26 +1501,30 @@ export function createSparklingWaterSystem(
     }
     risingMesh.instanceMatrix.needsUpdate = true;
 
-    // Update organic clinging inner-wall carbonation pearls (subtle wall-lens elongation)
+    // Update organic clinging inner-wall carbonation pearls (direct matrix write, zero trig)
+    const wallArr = wallMesh.instanceMatrix.array as Float32Array;
     for (let i = 0; i < wallCount; i++) {
       const w = wallSeeds[i];
-      const wallR =
-        sampleLiquidRadiusAtYNorm(w.yNorm, innerBodyR, innerNeckR) -
-        w.radius * 0.75;
-      const x = Math.cos(w.angle) * wallR;
-      const z = Math.sin(w.angle) * wallR;
-      const y = baseY + w.yNorm * H;
-
+      const submerged = 1 - THREE.MathUtils.smoothstep(w.yNorm, activeCeilingNorm - 0.025, activeCeilingNorm);
       const pulse = 0.92 + Math.sin(time * w.shimmerFreq + w.phase) * 0.09;
-      const s = w.radius * pulse;
-      // Subtle optical vertical stretch near curved wall silhouette
-      const edgeStretchY = 1.04 + Math.abs(Math.cos(w.angle)) * 0.08;
-
-      dummy.position.set(x, y, z);
-      dummy.scale.set(s, s * edgeStretchY, s);
-      dummy.rotation.set(0, 0, 0);
-      dummy.updateMatrix();
-      wallMesh.setMatrixAt(i, dummy.matrix);
+      const s = w.radius * pulse * submerged;
+      const offset = i * 16;
+      wallArr[offset] = s;
+      wallArr[offset + 1] = 0;
+      wallArr[offset + 2] = 0;
+      wallArr[offset + 3] = 0;
+      wallArr[offset + 4] = 0;
+      wallArr[offset + 5] = s * w.edgeStretchY;
+      wallArr[offset + 6] = 0;
+      wallArr[offset + 7] = 0;
+      wallArr[offset + 8] = 0;
+      wallArr[offset + 9] = 0;
+      wallArr[offset + 10] = s;
+      wallArr[offset + 11] = 0;
+      wallArr[offset + 12] = w.x;
+      wallArr[offset + 13] = w.y;
+      wallArr[offset + 14] = w.z;
+      wallArr[offset + 15] = 1;
     }
     wallMesh.instanceMatrix.needsUpdate = true;
   };
@@ -1199,12 +1559,16 @@ export function createSparklingWaterSystem(
     frostBumpMap.dispose();
     dropletGeo.dispose();
     dropletMat.dispose();
+    dripGeo.dispose();
+    dripTrailGeo.dispose();
+    dripTrailMat.dispose();
     bubbleGeo.dispose();
     bubbleMaterial.dispose();
   };
 
   return {
     group,
+    setFillLevel,
     update,
     dispose,
   };
